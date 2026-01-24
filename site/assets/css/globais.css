@@ -1,0 +1,265 @@
+/* ============================
+   Estilos Globais - Tema Baba Renovado
+   Inspirado no escudo atualizado
+============================ */
+
+/* Variáveis de cores */
+:root {
+  --primary-color: linear-gradient(to right, #000000, #D62828); /* Azul → Vermelho */
+  --secondary-color: #141414; /* Fundo mais escuro */
+  --accent-color: #ffffff; /* Branco para contraste */
+  --text-color: #ffffff; /* Branco no fundo escuro */
+  --hover-color: #D62828; /* Vermelho forte */
+  --highlight-color: #ffcc00; /* Amarelo destaque */
+  --gradient-bg: linear-gradient(135deg, #0041A8, #000000, #D62828); /* Fundo app */
+  --font-family: "Oswald", sans-serif; /* Fonte esportiva */
+  --icon-border-color: #da5252; /* Cor do círculo da imagem */
+  --icon-border-width: 6px; /* Largura do círculo */
+}
+
+/* Estilo global do corpo */
+body {
+  font-family: var(--font-family);
+  margin: 0;
+  padding: 0;
+  color: var(--text-color);
+  min-height: 100vh;
+  animation: backgroundColorAnimation 8s infinite alternate;
+  transition: color 0.3s ease, background 0.3s ease;
+  position: relative;
+  z-index: 0;
+  background: var(--gradient-bg);
+}
+
+/* Marca d’água (ícone transparente) */
+body::before {
+  content: "";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 200px;
+  height: 200px;
+  transform: translate(-50%, -50%);
+  background: url('../img/futponts_icon.png') no-repeat center center;
+  background-size: contain;
+  opacity: 0.05; /* Ajuste a transparência conforme desejar */
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Cabeçalho */
+header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: transparent;
+  text-align: center;
+  padding: 1.5rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  animation: slideIn 1s ease-out;
+}
+
+/* Animação do cabeçalho */
+@keyframes slideIn {
+  from {
+    transform: translateY(-100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Ícone do cabeçalho com borda circular colorida */
+.header-icon {
+  width: 150px;
+  height: 150px;
+  margin-bottom: 20px;
+  border-radius: 50%;
+  border: var(--icon-border-width) solid var(--icon-border-color);
+  padding: 5px;
+  animation: rotateIcon 6s linear infinite, pulseIcon 2s ease-in-out infinite;
+  box-shadow: 0 0 20px rgb(0, 47, 255);
+}
+
+/* Animação do ícone */
+@keyframes rotateIcon {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulseIcon {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+/* Botão de menu */
+.menu-button {
+  background: var(--primary-color);
+  color: var(--text-color);
+  font-size: 20px;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  width: 55px;
+  height: 55px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
+  animation: bounceButton 1s ease infinite;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+@keyframes bounceButton {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.menu-button:hover {
+  background: var(--hover-color);
+  transform: scale(1.15);
+  box-shadow: 0 6px 16px rgba(214, 40, 40, 0.6);
+}
+
+/* Menu suspenso */
+.menu {
+  display: none;
+  position: absolute;
+  top: 60px;
+  background: #000000; /* Fundo escuro do menu */
+  border-radius: 512px;
+  box-shadow: 0px 4px 12px rgb(255, 2, 2);
+  padding: 8px 15px;
+  min-width: 200px;
+  transition: opacity 0.3s, visibility 0.3s, transform 0.3s;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+}
+
+.menu.visible {
+  display: block;
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.menu a {
+  display: block;
+  margin-bottom: 8px;
+  color: #000000;
+  text-decoration: none;
+  font-size: 14px;
+  padding: 6px 0;
+  transition: color 0.3s, transform 0.2s;
+}
+
+.menu a:hover {
+  color: var(--hover-color);
+  transform: scale(1.05);
+}
+
+/* Navegação */
+nav {
+  margin-top: 1.25rem;
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  animation: fadeInNav 0.5s ease-out;
+}
+
+@keyframes fadeInNav {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+nav a {
+  color: var(--text-color);
+  text-decoration: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 10px;
+  background: var(--accent-color);
+  font-size: 1rem;
+  transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+nav a:hover {
+  background: var(--hover-color);
+  transform: scale(1.1);
+  box-shadow: 0 6px 14px rgba(214, 40, 40, 0.6);
+}
+
+/* Botões globais */
+button {
+  background: var(--primary-color);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 510px;
+  color: var(--text-color);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
+  animation: pulseButton 1.5s infinite;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+@keyframes pulseButton {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); box-shadow: 0 6px 16px rgba(0,0,0,0.5); }
+  100% { transform: scale(1); box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+}
+
+button:hover {
+  background: var(--hover-color);
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(214, 40, 40, 0.6);
+}
+
+button:focus {
+  outline: 2px solid var(--highlight-color);
+  outline-offset: 4px;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  nav { flex-direction: column; align-items: center; }
+  nav a { display: block; margin: 10px 0; }
+  .header-icon { width: 120px; height: 120px; border-width: 5px; }
+  .menu-button { width: 50px; height: 50px; font-size: 24px; }
+}
+
+@media (max-width: 480px) {
+  .header-icon { width: 100px; height: 100px; border-width: 4px; }
+  .menu-button { width: 45px; height: 45px; font-size: 20px; }
+}
+
+
+/* Marca d’água pulsante */
+body::before {
+  content: "";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 200px;
+  height: 200px;
+  transform: translate(-50%, -50%) scale(3);
+  background: url('../img/futponts_large.png') no-repeat center center;
+  background-size: contain;
+  opacity: 0.2;
+  pointer-events: none;
+  z-index: -1;
+  animation: watermarkPulse 1s ease-in-out infinite;
+}
+
+@keyframes watermarkPulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0.04;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(2.08);
+    opacity: 0.06;
+  }
+}

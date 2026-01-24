@@ -5,20 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ranking de Gols</title>
   <!-- CSS Específico da Página -->
-  <link rel="stylesheet" href="css/classificação.css">
+  <link rel="stylesheet" href="assets/css/classificação.css">
   <!-- CSS Global -->
-  <link rel="stylesheet" href="css/globais.css">
+  <link rel="stylesheet" href="assets/css/globais.css">
 </head>
-
-<body>
+<body class="page-transition">
   <!-- Cabeçalho -->
   <header>
-    <img src="img/futponts_large.png" alt="Ícone Futpontos" class="header-icon">
+    <img src="assets/img/futponts_large.png" alt="Ícone Futpontos" class="header-icon">
     <nav>
       <button id="menuButton">Menu</button>
       <div id="menu" class="menu">
         <a href="classificacao.html" class="ranking-button">Tabela de Classificação</a>
-        <a href="adicionar.html" class="player-button">Novo Jogador</a>
         <a href="gols.html" class="ranking-button">Ranking de Gols</a>
         <a href="defesa.html" class="ranking-button">Ranking de Defesas</a>
         <a href="vitorias.html" class="ranking-button">Ranking de Vitórias</a>
@@ -36,7 +34,7 @@
           <thead>
             <tr>
               <th>Jogador</th>
-              <th>Gols</th>
+              <th>Empates</th>
               <th>Ações</th>
             </tr>
           </thead>
@@ -46,12 +44,34 @@
     </section>
   </main>
 
-  
   <!-- Rodapé -->
   <footer></footer>
 
+  <!-- GSAP Animation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" defer></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const links = document.querySelectorAll(".nav-link");
+      links.forEach(link => {
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          const target = e.target.href;
+          gsap.to("body", {
+            opacity: 0,
+            duration: 0.3,
+            onComplete: () => {
+              window.location.href = target;
+            }
+          });
+        });
+      });
+
+      gsap.fromTo("body", { opacity: 0 }, { opacity: 1, duration: 0.5 });
+    });
+  </script>
+
   <!-- JS Específico da Página -->
-<script type="module" src="js/globais.js"></script>
-<script type="module" src="js/gols.js"></script>
+<script type="module" src="assets/js/globais.js"></script>
+<script type="module" src="assets/js/empate.js"></script>
 </body>
 </html>
