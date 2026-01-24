@@ -1,0 +1,116 @@
+/* ============================ 
+   Estilos para Gols - Tema Baba Renovado
+   Baseado em classificacao.css e globais.css
+============================ */
+
+/* Variáveis de cores - Herdadas de globais.css e classificacao.css */
+:root {
+  --primary-color: linear-gradient(to right, #0041A8, #D62828); /* Azul → Vermelho */
+  --secondary-color: rgba(20, 20, 20, 0.85); /* Fundo escuro da tabela */
+  --accent-color: #ffffff; /* Branco para contraste */
+  --text-color: #ffffff; /* Branco no fundo escuro */
+  --hover-color: #D62828; /* Vermelho forte no hover */
+  --background-gradient: linear-gradient(135deg, #0041A8, #000000, #D62828); /* Fundo do app */
+  --font-family: "Oswald", sans-serif;
+}
+
+/* Estilo global do corpo - Herdado de globais.css */
+body {
+  font-family: var(--font-family);
+  margin: 0;
+  padding: 0;
+  color: var(--text-color);
+  min-height: 100vh;
+  background: var(--background-gradient);
+}
+
+/* Tabelas - Padrão de classificacao.css */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--secondary-color); /* Fundo escuro */
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  margin: 20px 0; /* Margem para separar do conteúdo */
+}
+
+/* Cabeçalhos da Tabela - Padrão de classificacao.css */
+th {
+  background: var(--primary-color);
+  color: #fff;
+  font-weight: bold;
+  padding: 4px 6px; /* Linhas mais estreitas */
+  text-align: center;
+  font-size: 1rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+/* Linhas e Células - Padrão de classificacao.css */
+td {
+  padding: 2px 4px; /* Compacto para linha estreita */
+  text-align: center;
+  font-size: 0.95rem;
+  border-top: 1px solid #ffffff33;
+  color: var(--accent-color); /* Branco para contraste */
+  line-height: 1.2;
+}
+
+/* Alternância de Cores - Padrão de classificacao.css */
+tr:nth-child(even) {
+  background-color: rgba(255,255,255,0.05);
+}
+
+tr:nth-child(odd) {
+  background-color: rgba(255,255,255,0.1);
+}
+
+/* Efeito Hover - Padrão de classificacao.css */
+tr:hover {
+  background-color: var(--hover-color);
+  color: #fff;
+  transition: background 0.2s ease-in-out;
+}
+
+/* Bordas arredondadas - Padrão de classificacao.css */
+table tr:first-child th:first-child {
+  border-top-left-radius: 12px;
+}
+
+table tr:first-child th:last-child {
+  border-top-right-radius: 12px;
+}
+
+table tr:last-child td:first-child {
+  border-bottom-left-radius: 12px;
+}
+
+table tr:last-child td:last-child {
+  border-bottom-right-radius: 12px;
+}
+
+/* Responsividade - Padrão de classificacao.css */
+@media (max-width: 768px) {
+  th,
+  td {
+    padding: 2px 3px;
+    font-size: 0.85rem;
+  }
+  table {
+    border-radius: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  th,
+  td {
+    padding: 1px 2px;
+    font-size: 0.75rem;
+  }
+  table {
+    border-radius: 6px;
+  }
+}
+
