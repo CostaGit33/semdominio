@@ -1,99 +1,72 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Adicionar Jogador</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adicionar Jogador - SemDominio</title>
   <!-- Use seu CSS global e o novo CSS para o formulário -->
   <link rel="stylesheet" href="assets/css/globais.css">
   <link rel="stylesheet" href="assets/css/adicionar.css">
+    <style>
+        .input-row { display: flex; gap: 10px; margin-bottom: 15px; }
+        .input-group { flex: 1; display: flex; flex-direction: column; }
+        label { font-weight: bold; margin-bottom: 5px; }
+        input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { width: 100%; padding: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:disabled { background-color: #6c757d; }
+        #mensagem { margin-top: 20px; padding: 15px; border-radius: 4px; display: none; text-align: center; }
+    </style>
 </head>
 <body>
-  
-  <header>
-    <img src="assets/img/futponts_large.png" alt="Ícone Futpontos" class="header-icon">
-    <nav>
-      <button id="menuButton">Menu</button>
-      <div id="menu" class="menu">
-        <a href="classificacao.html" class="ranking-button">Tabela de Classificação</a>
-        <a href="gols.html" class="ranking-button">Ranking de Gols</a>
-        <a href="adicionar.html" class="ranking-button">Adicionar Jogador</a>        
-        <a href="defesa.html" class="ranking-button">Ranking de Defesas</a>
-        <a href="vitorias.html" class="ranking-button">Ranking de Vitórias</a>
-        <a href="empate.html" class="ranking-button">Ranking de Empates</a>
-      </div>
-    </nav>
-  </header>
+    <div class="container">
+        <h1>Cadastrar Estatísticas do Jogador</h1>
+        <form id="form-jogador">
+            <div class="input-row">
+                <div class="input-group">
+                    <label for="nome">Nome do Jogador</label>
+                    <input type="text" id="nome" required placeholder="Ex: Neymar">
+                </div>
+                <div class="input-group">
+                    <label for="time">Time</label>
+                    <input type="text" id="time" required placeholder="Ex: Al-Hilal">
+                </div>
+            </div>
 
-  <main>
-    <div class="form-wrapper">
-      <form id="playerForm">
-        <fieldset>
-          <legend>Cadastrar Novo Jogador</legend>
+            <div class="input-row">
+                <div class="input-group">
+                    <label for="pontos">Pontos</label>
+                    <input type="number" id="pontos" value="0" min="0">
+                </div>
+                <div class="input-group">
+                    <label for="vitorias">Vitórias</label>
+                    <input type="number" id="vitorias" value="0" min="0">
+                </div>
+            </div>
 
-          <!-- ETAPA 1: Nome do Jogador -->
-          <div class="form-step active" data-step="1">
-            <div class="form-group">
-              <label for="playerName">Qual o nome do jogador?</label>
-              <input type="text" id="playerName" name="playerName" required placeholder="Digite o nome aqui">
+            <div class="input-row">
+                <div class="input-group">
+                    <label for="gols">Gols</label>
+                    <input type="number" id="gols" value="0" min="0">
+                </div>
+                <div class="input-group">
+                    <label for="defesa">Defesas</label>
+                    <input type="number" id="defesa" value="0" min="0">
+                </div>
+                <div class="input-group">
+                    <label for="empate">Empates</label>
+                    <input type="number" id="empate" value="0" min="0">
+                </div>
             </div>
-            <button type="button" class="nav-button next-btn">Avançar &rarr;</button>
-          </div>
 
-          <!-- ETAPA 2: Vitórias e Empates -->
-          <div class="form-step" data-step="2">
-            <div class="stats-grid">
-              <div class="form-group">
-                <label for="playerVitorias">Vitórias</label>
-                <input type="number" id="playerVitorias" name="playerVitorias" required min="0" value="0">
-              </div>
-              <div class="form-group">
-                <label for="playerEmpates">Empates</label>
-                <input type="number" id="playerEmpates" name="playerEmpates" required min="0" value="0">
-              </div>
-            </div>
-            <div class="navigation-buttons">
-              <button type="button" class="nav-button prev-btn">&larr; Voltar</button>
-              <button type="button" class="nav-button next-btn">Avançar &rarr;</button>
-            </div>
-          </div>
-
-          <!-- ETAPA 3: Gols e Defesas -->
-          <div class="form-step" data-step="3">
-            <div class="stats-grid">
-              <div class="form-group">
-                <label for="playerGols">Gols</label>
-                <input type="number" id="playerGols" name="playerGols" required min="0" value="0">
-              </div>
-              <div class="form-group">
-                <label for="playerDefesas">Defesas</label>
-                <input type="number" id="playerDefesas" name="playerDefesas" required min="0" value="0">
-              </div>
-            </div>
-            <div class="navigation-buttons">
-              <button type="button" class="nav-button prev-btn">&larr; Voltar</button>
-              <button type="button" class="nav-button next-btn">Avançar &rarr;</button>
-            </div>
-          </div>
-
-          <!-- ETAPA 4: Infrações e Finalizar -->
-          <div class="form-step" data-step="4">
-            <div class="form-group">
-              <label for="playerInfractions">Infrações</label>
-              <input type="number" id="playerInfractions" name="playerInfractions" required min="0" value="0">
-            </div>
-            <div class="navigation-buttons">
-                <button type="button" class="nav-button prev-btn">&larr; Voltar</button>
-                <!-- O botão final é do tipo "submit" para enviar o formulário -->
-                <button type="submit" class="add-button">Adicionar Jogador</button>
-            </div>
-          </div>
-
-        </fieldset>
-      </form>
-      <div id="feedback"></div>
+            <button type="submit" id="btn-enviar">Salvar no Banco de Dados</button>
+        </form>
+        
+        <div id="mensagem"></div>
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <a href="index.html">⬅ Voltar para a Lista</a>
+        </div>
     </div>
-  </main>
 
   <!-- Scripts no final do body -->
   <script type="module" src="assets/js/globais.js"></script>
@@ -101,3 +74,5 @@
 
 </body>
 </html>
+
+
