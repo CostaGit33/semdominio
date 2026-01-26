@@ -5,9 +5,10 @@ document.getElementById("form-jogador").addEventListener("submit", async (event)
     const divMensagem = document.getElementById("mensagem");
 
     // --- CONFIGURAÇÃO DA URL ---
-    const API_URL = "https://api.semdominio.online/jogadores";
+    // Use a URL pública da sua API no Easypanel
+    const API_URL = "https://SUA-URL-DA-API.com/jogadores";
 
-    // Captura todos os campos e converte para os tipos corretos
+    // Captura os dados do formulário exatamente como o banco espera
     const dados = {
         nome: document.getElementById("nome" ).value.trim(),
         time: document.getElementById("time").value.trim(),
@@ -20,12 +21,13 @@ document.getElementById("form-jogador").addEventListener("submit", async (event)
 
     try {
         btnEnviar.disabled = true;
-        btnEnviar.innerText = "Enviando dados...";
-        divMensagem.style.display = "none";
+        btnEnviar.innerText = "Enviando para o Banco...";
 
         const response = await fetch(API_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json"
+            },
             body: JSON.stringify(dados)
         });
 
@@ -33,21 +35,17 @@ document.getElementById("form-jogador").addEventListener("submit", async (event)
             const resultado = await response.json();
             console.log("Sucesso:", resultado);
             
-            divMensagem.style.display = "block";
-            divMensagem.style.backgroundColor = "#d4edda";
-            divMensagem.style.color = "#155724";
-            divMensagem.innerText = `✅ ${dados.nome} cadastrado com sucesso!`;
+            // Feedback visual de sucesso
+            alert("✅ Jogador " + dados.nome + " adicionado com sucesso!");
             
+            // Limpa o formulário
             document.getElementById("form-jogador").reset();
         } else {
-            throw new Error("Erro no servidor");
+            throw new Error("Erro ao salvar no servidor");
         }
     } catch (error) {
-        console.error("Erro:", error);
-        divMensagem.style.display = "block";
-        divMensagem.style.backgroundColor = "#f8d7da";
-        divMensagem.style.color = "#721c24";
-        divMensagem.innerText = "❌ Erro ao conectar com a API. Verifique a URL.";
+        console.error("Erro na requisição:", error);
+        alert("❌ Erro ao conectar com a API. Verifique se a URL está correta.");
     } finally {
         btnEnviar.disabled = false;
         btnEnviar.innerText = "Salvar no Banco de Dados";
