@@ -6,7 +6,7 @@ document.getElementById("form-jogador").addEventListener("submit", async (event)
 
     // --- CONFIGURAÇÃO DA URL ---
     // Use a URL pública da sua API no Easypanel
-    const API_URL = "https://SUA-URL-DA-API.com/jogadores";
+    const API_URL = "https://api.semdominio.online/jogadores";
 
     // Captura os dados do formulário exatamente como o banco espera
     const dados = {
