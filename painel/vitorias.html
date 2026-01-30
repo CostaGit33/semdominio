@@ -3,53 +3,56 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ranking de Vitórias</title>
-  <!-- CSS Específico da Página -->
-  <link rel="stylesheet" href="assets/css/classificação.css">
+  <title>Ranking de Vitórias | Futpontos</title>
+
   <!-- CSS Global -->
   <link rel="stylesheet" href="assets/css/globais.css">
+  <!-- CSS da Página -->
+  <link rel="stylesheet" href="assets/css/classificacao.css">
 </head>
+
 <body>
-  <!-- Cabeçalho -->
-  <header>
-    <img src="assets/img/futponts_large.png" alt="Ícone Futpontos" class="header-icon">
-    <nav>
-      <button id="menuButton">Menu</button>
-      <div id="menu" class="menu">
-        <a href="classificacao.html" class="ranking-button">Tabela de Classificação</a>
-        <a href="gols.html" class="ranking-button">Ranking de Gols</a>
-        <a href="adicionar.html" class="player-button">Novo Jogador</a>        
-        <a href="defesa.html" class="ranking-button">Ranking de Defesas</a>
-        <a href="vitorias.html" class="ranking-button">Ranking de Vitórias</a>
-        <a href="empate.html" class="ranking-button">Ranking de Empates</a>
-      </div>
-    </nav>
-  </header>
-  
 
-  <!-- Conteúdo Principal -->
-  <main>
-    <section>
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Jogador</th>
-              <th>Vitórias</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody id="playerList"></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
+<header>
+  <img src="assets/img/futponts_large.png" alt="Ícone Futpontos" class="header-icon">
 
-  <!-- Rodapé -->
-  <footer></footer>
+  <nav>
+    <button id="menuButton">Menu</button>
+    <div id="menu" class="menu">
+      <a href="classificacao.html">Tabela de Classificação</a>
+      <a href="gols.html">Ranking de Gols</a>
+      <a href="adicionar.html">Adicionar Jogador</a>        
+      <a href="defesa.html">Ranking de Defesas</a>
+      <a href="vitorias.html" class="active">Ranking de Vitórias</a>
+      <a href="empate.html">Ranking de Empates</a>
+    </div>
+  </nav>
+</header>
 
-  <!-- JS Específico da Página -->
+<main>
+  <section class="table-section">
+    <h1>🥇 Ranking de Vitórias</h1>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Jogador</th>
+            <th>Vitórias</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+
+        <tbody id="playerList"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer></footer>
+
 <script type="module" src="assets/js/globais.js"></script>
 <script type="module" src="assets/js/vitorias.js"></script>
+
 </body>
 </html>

@@ -1,61 +1,61 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Classificação</title>
-  <!-- CSS Global -->
-  <link rel="stylesheet" href="assets/css/globais.css">
-  <!-- CSS Específico da Página -->
-  <link rel="stylesheet" href="assets/css/classificação.css">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Classificação | Futpontos</title>
+
+  <link rel="stylesheet" href="assets/css/globais.css"/>
+  <link rel="stylesheet" href="assets/css/classificacao.css"/>
+
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
+
 <body>
-  
-  <header>
-    <img src="assets/img/futponts_large.png" alt="Ícone Futpontos" class="header-icon">
-    <nav>
-      <button id="menuButton">Menu</button>
-      <div id="menu" class="menu">
-        <a href="classificacao.html" class="ranking-button">Tabela de Classificação</a>
-        <a href="gols.html" class="ranking-button">Ranking de Gols</a>
-        <a href="adicionar.html" class="ranking-button">Adicionar Jogador</a>        
-        <a href="defesa.html" class="ranking-button">Ranking de Defesas</a>
-        <a href="vitorias.html" class="ranking-button">Ranking de Vitórias</a>
-        <a href="empate.html" class="ranking-button">Ranking de Empates</a>
-      </div>
-    </nav>
-  </header>
-  
-  <!-- Conteúdo Principal -->
-  <main>
-    <section>
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Jogador</th>
-              <th>P</th>
-              <th>V</th>
-              <th>G</th>
-              <th>D</th>
-              <th>E</th>
-              <th>INF</th> <!-- Nova coluna Infrações -->
-              <th>x</th>
-            </tr>
-          </thead>
-          <tbody id="playerList"></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
 
-  <!-- Rodapé -->
-  <footer></footer>
+<header>
+  <img src="assets/img/futponts_large.png" class="header-icon" alt="Futpontos">
 
-  <!-- JS Global -->
+  <nav>
+    <button id="menuButton">Menu</button>
+    <div id="menu" class="menu">
+      <a href="classificacao.html">Tabela de Classificação</a>
+      <a href="gols.html">Ranking de Gols</a>
+      <a href="adicionar.html">Adicionar Jogador</a>
+      <a href="defesa.html">Ranking de Defesas</a>
+      <a href="vitorias.html">Ranking de Vitórias</a>
+      <a href="empate.html">Ranking de Empates</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+  <section class="table-section">
+    <h1>🏆 Classificação Geral</h1>
+    <div id="rankingCards" class="ranking-cards"></div>
+    <div class="table-container" id="printArea">
+      <table>
+        <thead>
+          <tr>
+            <th>Jogador</th>
+            <th>Pontos</th>
+            <th>Vitórias</th>
+            <th>Gols</th>
+            <th>Defesas</th>
+            <th>Empates</th>
+          </tr>
+        </thead>
+
+        <tbody id="playerList"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer></footer>
+
 <script type="module" src="assets/js/globais.js"></script>
-<script type="module" src="assets/js/classificação.js"></script>
-
+<script type="module" src="assets/js/classificacao.js"></script>
 </body>
 </html>

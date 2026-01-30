@@ -1,0 +1,148 @@
+/* ============================ 
+   Estilos para Cards com Estrelas e Bolas de Futebol
+============================ */
+
+/* Variáveis reutilizadas */
+:root {
+  --card-background: rgba(0, 0, 0, 0.8); /* Fundo semitransparente */
+  --card-border-color: var(--primary-color); /* Borda vermelha */
+  --card-hover-color: #4444ff; /* Azul vibrante no hover */
+  --card-shadow: 0 8px 16px rgba(0, 0, 0, 0.5); /* Sombras suaves */
+  --star-color: gold; /* Cor das estrelas */
+  --football-color: white; /* Cor para a bola de futebol */
+  --football-size: 20px; /* Tamanho da bola de futebol */
+}
+
+/* Container dos cards */
+#topCardsContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* Estilo básico para os cards */
+.top-player-card {
+  background: var(--card-background);
+  color: var(--text-color);
+  border: 2px solid var(--card-border-color);
+  border-radius: 15px;
+  box-shadow: var(--card-shadow);
+  padding: 20px;
+  width: 250px; /* Largura fixa */
+  text-align: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Título dos cards */
+.top-player-card h2 {
+  font-size: 1.5rem;
+  margin-bottom: 15px;
+  font-family: var(--font-family);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--primary-color);
+}
+
+/* Nome e valor */
+.top-player-card p {
+  margin: 5px 0;
+  font-size: 1.1rem;
+}
+
+/* Efeito hover nos cards */
+.top-player-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.7);
+  border-color: var(--card-hover-color);
+}
+
+/* Adicionando estrelas decorativas */
+.top-player-card {
+  position: relative;
+  padding-top: 20px; /* Espaço superior para as estrelas */
+}
+
+/* Estrelas decorativas */
+.top-player-card::before {
+  content: "⭐⭐⭐⭐⭐"; /* Estrelas decorativas */
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.5rem; /* Tamanho ajustado */
+  color: var(--star-color);
+  opacity: 0.8;
+  pointer-events: none; /* As estrelas não interferem na interação */
+  z-index: 1; /* Certifica-se de que as estrelas ficam acima do fundo do card */
+}
+
+/* Organize o conteúdo principal do card */
+.top-player-card .player-name {
+  position: relative;
+  padding-top: 30px; /* Aumente o espaçamento superior do nome do jogador */
+  font-size: 1.2rem; /* Ajuste conforme necessário */
+  text-align: center;
+  z-index: 2; /* O nome ficará acima das estrelas */
+}
+
+
+/* Bola de futebol decorativa */
+.top-player-card::after {
+  content: "⚽"; /* Emoji de bola de futebol */
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  font-size: var(--football-size);
+  color: var(--football-color);
+  animation: bounce 2s infinite ease-in-out; /* Animação de quique */
+}
+
+.centered-title {
+  text-align: center;  /* Centraliza o texto */
+  margin: 0 auto;      /* Garante que o título esteja centralizado em relação ao container */
+}
+
+/* Animação da bola de futebol */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px); /* Altura do quique */
+  }
+}
+
+/* Responsividade para os cards */
+@media (max-width: 768px) {
+  .top-player-card {
+    width: 200px;
+    padding: 15px;
+  }
+
+  .top-player-card h2 {
+    font-size: 1.2rem;
+  }
+
+  .top-player-card p {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .top-player-card {
+    width: 100%;
+    padding: 10px;
+  }
+
+  .top-player-card h2 {
+    font-size: 1rem;
+  }
+
+  .top-player-card p {
+    font-size: 0.9rem;
+  }
+}

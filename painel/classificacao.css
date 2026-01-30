@@ -1,0 +1,175 @@
+/* =========================
+   RANKING MODERNO — FUTPONTOS PRO
+   Estilo: SofaScore / OneFootball
+========================= */
+
+.ranking-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 22px;
+  padding: 20px;
+}
+
+/* =========================
+   CARD DO JOGADOR
+========================= */
+
+.player-card {
+  background: linear-gradient(145deg, #0b0b0b, #1a1a1a);
+  border-radius: 20px;
+  padding: 18px 16px 20px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.65);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  animation: fadeUp .45s ease both;
+  transition: transform .25s ease, box-shadow .25s ease, border .25s ease;
+}
+
+.player-card:hover {
+  transform: translateY(-6px) scale(1.025);
+  box-shadow: 0 18px 40px rgba(0,0,0,.85);
+}
+
+/* =========================
+   DESTAQUE TOP 3
+========================= */
+
+.player-card.top-1 {
+  border: 2px solid #ffd700;
+  box-shadow: 0 0 22px #ffd70066, 0 16px 40px rgba(0,0,0,.85);
+}
+
+.player-card.top-2 {
+  border: 2px solid #c0c0c0;
+}
+
+.player-card.top-3 {
+  border: 2px solid #cd7f32;
+}
+
+/* =========================
+   RANK
+========================= */
+
+.player-rank {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 2.6rem;
+  font-weight: 900;
+  opacity: .08;
+  pointer-events: none;
+}
+
+/* =========================
+   IDENTIDADE
+========================= */
+
+.player-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.player-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: .4px;
+}
+
+.player-points {
+  font-size: .95rem;
+  font-weight: 600;
+  color: #ffcc00;
+}
+
+/* =========================
+   PROGRESSO
+========================= */
+
+.progress-bar {
+  width: 100%;
+  height: 12px;
+  background: rgba(255,255,255,.12);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.6);
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #D62828, #ffcc00);
+  border-radius: 12px;
+  transition: width 1s cubic-bezier(.4,0,.2,1);
+}
+
+/* =========================
+   ESTATÍSTICAS
+========================= */
+
+.player-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  font-size: .8rem;
+  opacity: .9;
+  margin-top: 4px;
+}
+
+.stat {
+  background: rgba(255,255,255,.05);
+  border-radius: 10px;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.stat strong {
+  font-size: .95rem;
+  color: #ffcc00;
+}
+
+/* =========================
+   ANIMAÇÕES
+========================= */
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* =========================
+   RESPONSIVO
+========================= */
+
+@media (max-width: 600px) {
+  .ranking-cards {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .player-card {
+    border-radius: 16px;
+  }
+
+  .player-rank {
+    font-size: 2.2rem;
+  }
+
+  .player-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

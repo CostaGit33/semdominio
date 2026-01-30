@@ -4,47 +4,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cards dos Jogadores | Futpontos</title>
-  <link rel="stylesheet" href="assets/css/adicionar.css"> <!-- Conectando o CSS específico da página -->
-  <link rel="stylesheet" href="assets/css/globais.css"> <!-- Conectando o CSS global -->
+  <title>Baba Sem Domínio | Futpontos</title>
+
+  <link rel="stylesheet" href="assets/css/globais.css">
+  <link rel="stylesheet" href="assets/css/adicionar.css">
 </head>
 
 <body class="cards-page">
-  <!-- Modal de Boas-Vindas -->
-  <div id="welcomeModal" class="modal">
-    <div class="modal-content">
-      <img src="img/futponts_large.png" alt="Ícone Futpontos" class="header-icon">
-      <h1>Bem-vindo ao Baba Sem Domínio!</h1>
-      <p>O aplicativo de controle de jogadores e pontuação.</p>
-      <button id="closeModalBtn">Fechar</button>
-    </div>
-  </div>
 
-  <header>
+<!-- Modal de Boas-Vindas -->
+<div id="welcomeModal" class="modal">
+  <div class="modal-content">
     <img src="assets/img/futponts_large.png" alt="Ícone Futpontos" class="header-icon">
-    <nav>
-      <button id="menuButton">Menu</button>
-      <div id="menu" class="menu">
-        <a href="classificacao.html" class="ranking-button">Tabela de Classificação</a>
-        <a href="adicionar.html" class="player-button">Novo Jogador</a>
-        <a href="gols.html" class="ranking-button">Ranking de Gols</a>
-        <a href="defesa.html" class="ranking-button">Ranking de Defesas</a>
-        <a href="vitorias.html" class="ranking-button">Ranking de Vitórias</a>
-        <a href="empate.html" class="ranking-button">Ranking de Empates</a>
-      </div>
-    </nav>
-  </header>
-  
+    <h1>Bem-vindo ao Baba Sem Domínio</h1>
+    <p>Controle de jogadores, estatísticas e rankings em tempo real.</p>
+    <button id="closeModalBtn">Entrar</button>
+  </div>
+</div>
 
+<header>
+  <img src="assets/img/futponts_large.png" alt="Ícone Futpontos" class="header-icon">
+  <nav>
+    <button id="menuButton">Menu</button>
+    <div id="menu" class="menu">
+      <a href="classificacao.html">Tabela de Classificação</a>
+      <a href="adicionar.html">Novo Jogador</a>
+      <a href="gols.html">Ranking de Gols</a>
+      <a href="defesa.html">Ranking de Defesas</a>
+      <a href="vitorias.html">Ranking de Vitórias</a>
+      <a href="empate.html">Ranking de Empates</a>
+    </div>
+  </nav>
+</header>
 
+<main>
+  <!-- Futuramente aqui entram cards, destaques, artilheiro, líder, etc -->
+</main>
 
-  <footer>
-    <p>&copy; 2024 Romulo Costa. Todos os direitos reservados.</p>
-  </footer>
+<footer>
+  <p>&copy; 2026 Romulo Costa. Futpontos.</p>
+</footer>
 
-  <!-- JS Específico da Página -->
 <script type="module" src="assets/js/globais.js"></script>
 <script type="module" src="assets/js/modal.js"></script>
-</body>
 
+</body>
 </html>
