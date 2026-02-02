@@ -1,69 +1,114 @@
-require("dotenv").config()
-const express = require("express")
-const cors = require("cors")
-const { Pool } = require("pg")
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const { Pool } = require("pg");
 
-const app = express()
-app.use(cors())
-app.use(express.json())
+const app = express();
+app.use(cors());
+app.use(express.json());
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-})
+  connectionString: process.env.DATABASE_URL,
+});
 
-// Rota de verificação de saúde (Health Check)
+/* ======================================================
+   HEALTH CHECK
+====================================================== */
 app.get("/", (req, res) => {
-  res.send("API semdominio ONLINE")
-})
+  res.send("API FutPontos ONLINE");
+});
 
-// Rota para ADICIONAR jogador (Atualizada com todos os campos)
+/* ======================================================
+   ADICIONAR JOGADOR
+====================================================== */
 app.post("/jogadores", async (req, res) => {
-  const { nome, time, pontos, vitorias, gols, defesa, empate } = req.body
+  const {
+    nome,
+    foto,
+    vitorias = 0,
+    gols = 0,
+    defesa = 0,
+    empate = 0,
+    infracoes = 0,
+  } = req.body;
+
+  if (!nome) {
+    return res.status(400).json({ error: "Nome é obrigatório" });
+  }
+
+  // 🔢 Regras de pontuação
+  // ajuste se quiser mudar no futuro
+  const pontos =
+    Number(vitorias) +
+    Number(gols) +
+    Number(defesa) +
+    Number(empate) -
+    Number(infracoes) * 2;
 
   try {
     const result = await pool.query(
-      "INSERT INTO jogadores (nome, time, pontos, vitorias, gols, defesa, empate) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+      `
+      INSERT INTO jogadores
+        (nome, foto, vitorias, gols, defesa, empate, infracoes, pontos)
+      VALUES
+        ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *;
+      `,
       [
-        nome, 
-        time, 
-        parseInt(pontos) || 0, 
-        parseInt(vitorias) || 0, 
-        parseInt(gols) || 0, 
-        parseInt(defesa) || 0, 
-        parseInt(empate) || 0
+        nome,
+        foto || null,
+        Number(vitorias),
+        Number(gols),
+        Number(defesa),
+        Number(empate),
+        Number(infracoes),
+        pontos,
       ]
-    )
-    res.json(result.rows[0])
-  } catch (err) {
-    console.error("Erro ao salvar:", err)
-    res.status(500).json({ error: "Erro ao salvar jogador no banco de dados" })
-  }
-})
+    );
 
-// Rota para LISTAR todos os jogadores
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Erro ao salvar jogador:", err);
+    res.status(500).json({
+      error: "Erro ao salvar jogador no banco de dados",
+    });
+  }
+});
+
+/* ======================================================
+   LISTAR JOGADORES
+====================================================== */
 app.get("/jogadores", async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM jogadores ORDER BY id DESC")
-    res.json(result.rows)
+    const result = await pool.query(
+      "SELECT * FROM jogadores ORDER BY pontos DESC, id ASC"
+    );
+    res.json(result.rows);
   } catch (err) {
-    console.error("Erro ao buscar:", err)
-    res.status(500).json({ error: "Erro ao buscar jogadores" })
+    console.error("Erro ao buscar jogadores:", err);
+    res.status(500).json({ error: "Erro ao buscar jogadores" });
   }
-})
+});
 
-// Rota para DELETAR um jogador pelo ID
+/* ======================================================
+   DELETAR JOGADOR
+====================================================== */
 app.delete("/jogadores/:id", async (req, res) => {
-  const { id } = req.params
-  try {
-    await pool.query("DELETE FROM jogadores WHERE id = $1", [id])
-    res.json({ message: "Jogador removido com sucesso" })
-  } catch (err) {
-    console.error("Erro ao deletar:", err)
-    res.status(500).json({ error: "Erro ao remover jogador" })
-  }
-})
+  const { id } = req.params;
 
-const PORT = process.env.PORT || 3000
+  try {
+    await pool.query("DELETE FROM jogadores WHERE id = $1", [id]);
+    res.json({ message: "Jogador removido com sucesso" });
+  } catch (err) {
+    console.error("Erro ao deletar jogador:", err);
+    res.status(500).json({ error: "Erro ao remover jogador" });
+  }
+});
+
+/* ======================================================
+   START SERVER
+====================================================== */
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`API rodando na porta ${PORT}`)
-})
+  console.log(`🚀 API FutPontos rodando na porta ${PORT}`);
+});
