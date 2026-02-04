@@ -1,0 +1,211 @@
+/* ======================================================
+   SEGURANÇA GLOBAL (ANTI-IMAGEM GIGANTE)
+====================================================== */
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ======================================================
+   ÁREA PRINCIPAL
+====================================================== */
+
+.app-main {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+}
+
+/* ======================================================
+   HEADER DE SEÇÃO
+====================================================== */
+
+.section-header h2 {
+  font-size: 1.5rem;
+  margin-bottom: 2rem;
+  color: var(--highlight-color);
+  text-transform: uppercase;
+  text-align: center;
+}
+
+/* ======================================================
+   LOGO (HEADER)
+====================================================== */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  max-width: 40px;
+  max-height: 40px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* ======================================================
+   FORMULÁRIO
+====================================================== */
+
+.player-form {
+  background: #111;
+  padding: 2rem;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--highlight-color);
+}
+
+input {
+  background: #222;
+  border: 1px solid #333;
+  padding: 0.75rem;
+  border-radius: 8px;
+  color: #fff;
+  font-family: inherit;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+/* GRID DOS CAMPOS NUMÉRICOS */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 1rem;
+}
+
+/* BOTÕES */
+.form-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+button {
+  flex: 1;
+  padding: 0.9rem;
+  border-radius: 8px;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+button[type="submit"] {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+button.secondary {
+  background: #333;
+  color: #fff;
+}
+
+button:hover {
+  opacity: 0.9;
+  transform: scale(1.02);
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+/* ======================================================
+   LISTA DE JOGADORES (PADRONIZADA)
+====================================================== */
+
+.player-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  background: #111;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+.player-list li {
+  display: grid;
+  grid-template-columns: 1fr 80px 100px;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.player-list li:last-child {
+  border-bottom: none;
+}
+
+.player-list strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-list span {
+  text-align: center;
+  font-weight: 700;
+  color: var(--highlight-color);
+}
+
+/* AÇÕES */
+.player-list .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.player-list button {
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  background: #222;
+  font-size: 0.85rem;
+}
+
+.player-list button:hover {
+  background: var(--primary-color);
+}
+
+/* ======================================================
+   RESPONSIVO
+====================================================== */
+
+@media (max-width: 600px) {
+  .player-list li {
+    grid-template-columns: 1fr 60px 90px;
+    font-size: 0.9rem;
+  }
+
+  .brand-logo {
+    width: 34px;
+    height: 34px;
+  }
+}
