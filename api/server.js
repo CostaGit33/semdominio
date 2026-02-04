@@ -36,8 +36,7 @@ app.post("/jogadores", async (req, res) => {
     return res.status(400).json({ error: "Nome é obrigatório" });
   }
 
-  // 🔢 Regras de pontuação
-  // ajuste se quiser mudar no futuro
+  // 🔢 Regra de pontuação (centralizada no backend)
   const pontos =
     Number(vitorias) +
     Number(gols) +
@@ -87,6 +86,76 @@ app.get("/jogadores", async (req, res) => {
   } catch (err) {
     console.error("Erro ao buscar jogadores:", err);
     res.status(500).json({ error: "Erro ao buscar jogadores" });
+  }
+});
+
+/* ======================================================
+   ATUALIZAR JOGADOR
+====================================================== */
+app.put("/jogadores/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const {
+    nome,
+    foto,
+    vitorias = 0,
+    gols = 0,
+    defesa = 0,
+    empate = 0,
+    infracoes = 0,
+  } = req.body;
+
+  if (!nome) {
+    return res.status(400).json({ error: "Nome é obrigatório" });
+  }
+
+  // 🔢 Recalcula pontos
+  const pontos =
+    Number(vitorias) +
+    Number(gols) +
+    Number(defesa) +
+    Number(empate) -
+    Number(infracoes) * 2;
+
+  try {
+    const result = await pool.query(
+      `
+      UPDATE jogadores
+      SET
+        nome = $1,
+        foto = $2,
+        vitorias = $3,
+        gols = $4,
+        defesa = $5,
+        empate = $6,
+        infracoes = $7,
+        pontos = $8
+      WHERE id = $9
+      RETURNING *;
+      `,
+      [
+        nome,
+        foto || null,
+        Number(vitorias),
+        Number(gols),
+        Number(defesa),
+        Number(empate),
+        Number(infracoes),
+        pontos,
+        id,
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Jogador não encontrado" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Erro ao atualizar jogador:", err);
+    res.status(500).json({
+      error: "Erro ao atualizar jogador no banco de dados",
+    });
   }
 });
 
