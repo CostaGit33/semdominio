@@ -7,6 +7,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+/* ======================================================
+   DATABASE
+====================================================== */
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
@@ -15,17 +18,44 @@ const pool = new Pool({
    HEALTH CHECK
 ====================================================== */
 app.get("/", (req, res) => {
-  res.send("API FutPontos ONLINE");
+  res.send("🚀 API FutPontos ONLINE");
 });
 
 /* ======================================================
-   LISTAR JOGADORES
+   FUNÇÃO DE CÁLCULO DE PONTOS (PADRÃO)
+   1 vitória  = 3 pts
+   1 gol      = 2 pts
+   1 defesa   = 1 pt
+   1 empate   = 1 pt
+   infração   = -2 pts
+====================================================== */
+function calcularPontos({
+  vitorias = 0,
+  gols = 0,
+  defesa = 0,
+  empate = 0,
+  infracoes = 0,
+}) {
+  return (
+    Number(vitorias) * 3 +
+    Number(gols) * 2 +
+    Number(defesa) +
+    Number(empate) -
+    Number(infracoes) * 2
+  );
+}
+
+/* ======================================================
+   LISTAR JOGADORES (PADRÃO)
 ====================================================== */
 app.get("/jogadores", async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT * FROM jogadores ORDER BY pontos DESC, id ASC"
-    );
+    const result = await pool.query(`
+      SELECT *
+      FROM jogadores
+      ORDER BY pontos DESC, nome ASC
+    `);
+
     res.json(result.rows);
   } catch (err) {
     console.error("Erro ao buscar jogadores:", err);
@@ -34,7 +64,35 @@ app.get("/jogadores", async (req, res) => {
 });
 
 /* ======================================================
-   BUSCAR JOGADOR POR ID  ✅ (ESSENCIAL)
+   LISTAR JOGADORES2  ✅ (FRONTEND USA ESSE)
+====================================================== */
+app.get("/jogadores2", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        nome,
+        foto,
+        gols,
+        vitorias,
+        empate,
+        defesa,
+        infracoes,
+        pontos,
+        criado_em
+      FROM jogadores
+      ORDER BY pontos DESC, id ASC
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Erro ao buscar jogadores2:", err);
+    res.status(500).json({ error: "Erro ao buscar jogadores2" });
+  }
+});
+
+/* ======================================================
+   BUSCAR JOGADOR POR ID
 ====================================================== */
 app.get("/jogadores/:id", async (req, res) => {
   const { id } = req.params;
@@ -45,7 +103,7 @@ app.get("/jogadores/:id", async (req, res) => {
       [id]
     );
 
-    if (result.rowCount === 0) {
+    if (!result.rowCount) {
       return res.status(404).json({ error: "Jogador não encontrado" });
     }
 
@@ -63,10 +121,10 @@ app.post("/jogadores", async (req, res) => {
   const {
     nome,
     foto,
-    vitorias = 0,
     gols = 0,
-    defesa = 0,
+    vitorias = 0,
     empate = 0,
+    defesa = 0,
     infracoes = 0,
   } = req.body;
 
@@ -74,30 +132,31 @@ app.post("/jogadores", async (req, res) => {
     return res.status(400).json({ error: "Nome é obrigatório" });
   }
 
-  const pontos =
-    Number(vitorias) +
-    Number(gols) +
-    Number(defesa) +
-    Number(empate) -
-    Number(infracoes) * 2;
+  const pontos = calcularPontos({
+    gols,
+    vitorias,
+    empate,
+    defesa,
+    infracoes,
+  });
 
   try {
     const result = await pool.query(
       `
       INSERT INTO jogadores
-        (nome, foto, vitorias, gols, defesa, empate, infracoes, pontos)
+      (nome, foto, gols, vitorias, empate, defesa, infracoes, pontos)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8)
+      ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING *;
       `,
       [
         nome,
         foto || null,
-        Number(vitorias),
-        Number(gols),
-        Number(defesa),
-        Number(empate),
-        Number(infracoes),
+        gols,
+        vitorias,
+        empate,
+        defesa,
+        infracoes,
         pontos,
       ]
     );
@@ -105,9 +164,7 @@ app.post("/jogadores", async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error("Erro ao salvar jogador:", err);
-    res.status(500).json({
-      error: "Erro ao salvar jogador no banco de dados",
-    });
+    res.status(500).json({ error: "Erro ao salvar jogador" });
   }
 });
 
@@ -116,66 +173,60 @@ app.post("/jogadores", async (req, res) => {
 ====================================================== */
 app.put("/jogadores/:id", async (req, res) => {
   const { id } = req.params;
-
   const {
     nome,
     foto,
-    vitorias = 0,
     gols = 0,
-    defesa = 0,
+    vitorias = 0,
     empate = 0,
+    defesa = 0,
     infracoes = 0,
   } = req.body;
 
-  if (!nome) {
-    return res.status(400).json({ error: "Nome é obrigatório" });
-  }
-
-  const pontos =
-    Number(vitorias) +
-    Number(gols) +
-    Number(defesa) +
-    Number(empate) -
-    Number(infracoes) * 2;
+  const pontos = calcularPontos({
+    gols,
+    vitorias,
+    empate,
+    defesa,
+    infracoes,
+  });
 
   try {
     const result = await pool.query(
       `
       UPDATE jogadores SET
-        nome = $1,
-        foto = $2,
-        vitorias = $3,
-        gols = $4,
-        defesa = $5,
-        empate = $6,
-        infracoes = $7,
-        pontos = $8
-      WHERE id = $9
+        nome=$1,
+        foto=$2,
+        gols=$3,
+        vitorias=$4,
+        empate=$5,
+        defesa=$6,
+        infracoes=$7,
+        pontos=$8
+      WHERE id=$9
       RETURNING *;
       `,
       [
         nome,
         foto || null,
-        Number(vitorias),
-        Number(gols),
-        Number(defesa),
-        Number(empate),
-        Number(infracoes),
+        gols,
+        vitorias,
+        empate,
+        defesa,
+        infracoes,
         pontos,
         id,
       ]
     );
 
-    if (result.rowCount === 0) {
+    if (!result.rowCount) {
       return res.status(404).json({ error: "Jogador não encontrado" });
     }
 
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Erro ao atualizar jogador:", err);
-    res.status(500).json({
-      error: "Erro ao atualizar jogador no banco de dados",
-    });
+    res.status(500).json({ error: "Erro ao atualizar jogador" });
   }
 });
 
@@ -191,7 +242,7 @@ app.delete("/jogadores/:id", async (req, res) => {
       [id]
     );
 
-    if (result.rowCount === 0) {
+    if (!result.rowCount) {
       return res.status(404).json({ error: "Jogador não encontrado" });
     }
 
@@ -207,5 +258,5 @@ app.delete("/jogadores/:id", async (req, res) => {
 ====================================================== */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 API FutPontos rodando na porta ${PORT}`);
+  console.log(`🔥 API FutPontos rodando na porta ${PORT}`);
 });
