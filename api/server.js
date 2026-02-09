@@ -26,12 +26,7 @@ app.get("/", (req, res) => {
 });
 
 /* ======================================================
-   FUNÇÃO OFICIAL DE CÁLCULO DE PONTOS
-   Vitória   = +3
-   Gol       = +2
-   Empate    = +1
-   Defesa    = +1
-   Infração  = -2
+   REGRA OFICIAL DE PONTUAÇÃO (ÚNICA FONTE DA VERDADE)
 ====================================================== */
 function calcularPontos({
   vitorias = 0,
@@ -50,27 +45,9 @@ function calcularPontos({
 }
 
 /* ======================================================
-   LISTAR JOGADORES (PADRÃO)
+   LISTAR TODOS OS JOGADORES (PADRÃO)
 ====================================================== */
 app.get("/jogadores", async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT *
-      FROM jogadores
-      ORDER BY pontos DESC, nome ASC
-    `);
-
-    res.json(result.rows);
-  } catch (err) {
-    console.error("Erro ao buscar jogadores:", err);
-    res.status(500).json({ error: "Erro ao buscar jogadores" });
-  }
-});
-
-/* ======================================================
-   LISTAR JOGADORES2 (USADO NO FRONTEND)
-====================================================== */
-app.get("/jogadores2", async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -85,13 +62,43 @@ app.get("/jogadores2", async (req, res) => {
         pontos,
         criado_em
       FROM jogadores
-      ORDER BY pontos DESC, id ASC
+      ORDER BY pontos DESC, vitorias DESC, gols DESC, defesa DESC, nome ASC
     `);
 
     res.json(result.rows);
   } catch (err) {
-    console.error("Erro ao buscar jogadores2:", err);
-    res.status(500).json({ error: "Erro ao buscar jogadores2" });
+    console.error("Erro ao buscar jogadores:", err);
+    res.status(500).json({ error: "Erro ao buscar jogadores" });
+  }
+});
+
+/* ======================================================
+   LISTAR GOLEIROS (ENDPOINT REAL)
+   Critério: defesa > 0
+====================================================== */
+app.get("/goleiros", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        nome,
+        foto,
+        vitorias,
+        gols,
+        empate,
+        defesa,
+        infracoes,
+        pontos,
+        criado_em
+      FROM jogadores
+      WHERE defesa > 0
+      ORDER BY pontos DESC, defesa DESC, vitorias DESC, nome ASC
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Erro ao buscar goleiros:", err);
+    res.status(500).json({ error: "Erro ao buscar goleiros" });
   }
 });
 
@@ -103,7 +110,7 @@ app.get("/jogadores/:id", async (req, res) => {
 
   try {
     const result = await pool.query(
-      "SELECT * FROM jogadores WHERE id = $1",
+      `SELECT * FROM jogadores WHERE id = $1`,
       [id]
     );
 
@@ -247,7 +254,7 @@ app.delete("/jogadores/:id", async (req, res) => {
 
   try {
     const result = await pool.query(
-      "DELETE FROM jogadores WHERE id = $1",
+      `DELETE FROM jogadores WHERE id = $1`,
       [id]
     );
 
