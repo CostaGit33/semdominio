@@ -4,6 +4,10 @@ const cors = require("cors");
 const { Pool } = require("pg");
 
 const app = express();
+
+/* ======================================================
+   MIDDLEWARES
+====================================================== */
 app.use(cors());
 app.use(express.json());
 
@@ -22,25 +26,25 @@ app.get("/", (req, res) => {
 });
 
 /* ======================================================
-   FUNÇÃO DE CÁLCULO DE PONTOS (PADRÃO)
-   1 vitória  = 3 pts
-   1 gol      = 2 pts
-   1 defesa   = 1 pt
-   1 empate   = 1 pt
-   infração   = -2 pts
+   FUNÇÃO OFICIAL DE CÁLCULO DE PONTOS
+   Vitória   = +3
+   Gol       = +2
+   Empate    = +1
+   Defesa    = +1
+   Infração  = -2
 ====================================================== */
 function calcularPontos({
   vitorias = 0,
   gols = 0,
-  defesa = 0,
   empate = 0,
+  defesa = 0,
   infracoes = 0,
 }) {
   return (
     Number(vitorias) * 3 +
     Number(gols) * 2 +
-    Number(defesa) +
-    Number(empate) -
+    Number(empate) +
+    Number(defesa) -
     Number(infracoes) * 2
   );
 }
@@ -64,7 +68,7 @@ app.get("/jogadores", async (req, res) => {
 });
 
 /* ======================================================
-   LISTAR JOGADORES2  ✅ (FRONTEND USA ESSE)
+   LISTAR JOGADORES2 (USADO NO FRONTEND)
 ====================================================== */
 app.get("/jogadores2", async (req, res) => {
   try {
@@ -73,8 +77,8 @@ app.get("/jogadores2", async (req, res) => {
         id,
         nome,
         foto,
-        gols,
         vitorias,
+        gols,
         empate,
         defesa,
         infracoes,
@@ -121,8 +125,8 @@ app.post("/jogadores", async (req, res) => {
   const {
     nome,
     foto,
-    gols = 0,
     vitorias = 0,
+    gols = 0,
     empate = 0,
     defesa = 0,
     infracoes = 0,
@@ -133,8 +137,8 @@ app.post("/jogadores", async (req, res) => {
   }
 
   const pontos = calcularPontos({
-    gols,
     vitorias,
+    gols,
     empate,
     defesa,
     infracoes,
@@ -144,16 +148,16 @@ app.post("/jogadores", async (req, res) => {
     const result = await pool.query(
       `
       INSERT INTO jogadores
-      (nome, foto, gols, vitorias, empate, defesa, infracoes, pontos)
+        (nome, foto, vitorias, gols, empate, defesa, infracoes, pontos)
       VALUES
-      ($1,$2,$3,$4,$5,$6,$7,$8)
+        ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING *;
       `,
       [
         nome,
         foto || null,
-        gols,
         vitorias,
+        gols,
         empate,
         defesa,
         infracoes,
@@ -173,19 +177,24 @@ app.post("/jogadores", async (req, res) => {
 ====================================================== */
 app.put("/jogadores/:id", async (req, res) => {
   const { id } = req.params;
+
   const {
     nome,
     foto,
-    gols = 0,
     vitorias = 0,
+    gols = 0,
     empate = 0,
     defesa = 0,
     infracoes = 0,
   } = req.body;
 
+  if (!nome) {
+    return res.status(400).json({ error: "Nome é obrigatório" });
+  }
+
   const pontos = calcularPontos({
-    gols,
     vitorias,
+    gols,
     empate,
     defesa,
     infracoes,
@@ -195,22 +204,22 @@ app.put("/jogadores/:id", async (req, res) => {
     const result = await pool.query(
       `
       UPDATE jogadores SET
-        nome=$1,
-        foto=$2,
-        gols=$3,
-        vitorias=$4,
-        empate=$5,
-        defesa=$6,
-        infracoes=$7,
-        pontos=$8
-      WHERE id=$9
+        nome = $1,
+        foto = $2,
+        vitorias = $3,
+        gols = $4,
+        empate = $5,
+        defesa = $6,
+        infracoes = $7,
+        pontos = $8
+      WHERE id = $9
       RETURNING *;
       `,
       [
         nome,
         foto || null,
-        gols,
         vitorias,
+        gols,
         empate,
         defesa,
         infracoes,
