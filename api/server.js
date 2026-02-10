@@ -1,124 +1,119 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const { Pool } = require("pg");
+require("dotenv").config()
+const express = require("express")
+const cors = require("cors")
+const { Pool } = require("pg")
 
-const app = express();
+const app = express()
+app.use(cors())
+app.use(express.json())
 
-/* ======================================================
-   CONFIGURAÇÕES INICIAIS
-====================================================== */
-app.use(cors());
-app.use(express.json());
-
-// Configuração do Banco de Dados PostgreSQL
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false // Necessário para serviços como Render, Railway ou Neon
-  }
-});
+  connectionString: process.env.DATABASE_URL
+})
+
+// Teste de conexão
+app.get("/", (req, res) => {
+  res.json({ status: "online", message: "API FutPontos ONLINE" })
+})
 
 /* ======================================================
-   ROTAS DA API
+   ENDPOINTS JOGADORES (TABELA PRINCIPAL)
 ====================================================== */
 
-// Rota de teste
-app.get("/", (req, res) => {
-  res.send("⚽ API Baba Sem Domínio ONLINE");
-});
-
-/**
- * ROTA: Cadastrar Jogador (POST /jogadores)
- * Recebe todos os campos da tabela SQL
- */
-app.post("/jogadores", async (req, res) => {
-  const { nome, vitorias, gols, defesa, empate, infracoes } = req.body;
-
-  try {
-    const query = `
-      INSERT INTO jogadores (nome, vitorias, gols, defesa, empate, infracoes)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
-    `;
-    
-    // Garante que se um valor não for enviado, ele seja salvo como 0
-    const values = [
-      nome,
-      vitorias || 0,
-      gols || 0,
-      defesa || 0,
-      empate || 0,
-      infracoes || 0
-    ];
-
-    const result = await pool.query(query, values);
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error("Erro ao salvar jogador:", err);
-    res.status(500).json({ error: "Erro interno ao salvar jogador" });
-  }
-});
-
-/**
- * ROTA: Listagem Geral (GET /jogadores)
- * Usada pela página index.html
- */
+// Listar todos os jogadores
 app.get("/jogadores", async (req, res) => {
   try {
-    // Retorna todos os jogadores para o frontend calcular a pontuação geral
-    const result = await pool.query("SELECT * FROM jogadores ORDER BY id DESC");
-    res.json(result.rows);
+    const result = await pool.query("SELECT * FROM jogadores ORDER BY id DESC")
+    res.json(result.rows)
   } catch (err) {
-    console.error("Erro ao buscar jogadores:", err);
-    res.status(500).json({ error: "Erro ao buscar lista de jogadores" });
+    console.error("Erro ao buscar jogadores:", err)
+    res.status(500).json({ error: "Erro ao buscar jogadores" })
   }
-});
+})
 
-/**
- * ROTA: Listagem de Goleiros (GET /jogadores2)
- * Usada pela página goleiros.html
- */
-app.get("/jogadores2", async (req, res) => {
-  try {
-    // Filtra jogadores que têm pelo menos 1 defesa (critério para ser goleiro)
-    const result = await pool.query(
-      "SELECT * FROM jogadores WHERE defesa > 0 ORDER BY id DESC"
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error("Erro ao buscar goleiros:", err);
-    res.status(500).json({ error: "Erro ao buscar lista de goleiros" });
-  }
-});
-
-/**
- * ROTA: Detalhes de um Jogador (GET /jogadores/:id)
- * Útil para a página jogador.html?id=...
- */
+// Buscar um jogador específico por ID
 app.get("/jogadores/:id", async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params
   try {
-    const result = await pool.query("SELECT * FROM jogadores WHERE id = $1", [id]);
+    const result = await pool.query("SELECT * FROM jogadores WHERE id = $1", [id])
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Jogador não encontrado" });
+      return res.status(404).json({ error: "Jogador não encontrado" })
     }
-    res.json(result.rows[0]);
+    res.json(result.rows[0])
   } catch (err) {
-    console.error("Erro ao buscar detalhes do jogador:", err);
-    res.status(500).json({ error: "Erro ao buscar detalhes" });
+    console.error("Erro ao buscar jogador:", err)
+    res.status(500).json({ error: "Erro ao buscar jogador" })
   }
-});
+})
+
+// Criar novo jogador
+app.post("/jogadores", async (req, res) => {
+  const { nome, time, vitorias, empate, defesa, gols, infracoes, foto } = req.body
+
+  try {
+    const result = await pool.query(
+      "INSERT INTO jogadores (nome, time, vitorias, empate, defesa, gols, infracoes, foto) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+      [nome, time, vitorias || 0, empate || 0, defesa || 0, gols || 0, infracoes || 0, foto]
+    )
+    res.status(201).json(result.rows[0])
+  } catch (err) {
+    console.error("Erro ao salvar jogador:", err)
+    res.status(500).json({ error: "Erro ao salvar jogador" })
+  }
+})
+
+// Atualizar jogador existente
+app.put("/jogadores/:id", async (req, res) => {
+  const { id } = req.params
+  const { nome, time, vitorias, empate, defesa, gols, infracoes, foto } = req.body
+
+  try {
+    const result = await pool.query(
+      "UPDATE jogadores SET nome=$1, time=$2, vitorias=$3, empate=$4, defesa=$5, gols=$6, infracoes=$7, foto=$8 WHERE id=$9 RETURNING *",
+      [nome, time, vitorias, empate, defesa, gols, infracoes, foto, id]
+    )
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Jogador não encontrado" })
+    }
+    res.json(result.rows[0])
+  } catch (err) {
+    console.error("Erro ao atualizar jogador:", err)
+    res.status(500).json({ error: "Erro ao atualizar jogador" })
+  }
+})
 
 /* ======================================================
-   INICIALIZAÇÃO DO SERVIDOR
+   ENDPOINTS GOLEIROS (TABELA GOLEIROS)
 ====================================================== */
+
+// Listar todos os goleiros
+app.get("/goleiros", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM goleiros ORDER BY id DESC")
+    res.json(result.rows)
+  } catch (err) {
+    console.error("Erro ao buscar goleiros:", err)
+    res.status(500).json({ error: "Erro ao buscar goleiros" })
+  }
+})
+
+// Buscar um goleiro específico por ID
+app.get("/goleiros/:id", async (req, res) => {
+  const { id } = req.params
+  try {
+    const result = await pool.query("SELECT * FROM goleiros WHERE id = $1", [id])
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Goleiro não encontrado" })
+    }
+    res.json(result.rows[0])
+  } catch (err) {
+    console.error("Erro ao buscar goleiro:", err)
+    res.status(500).json({ error: "Erro ao buscar goleiro" })
+  }
+})
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`-----------------------------------------`);
-  console.log(`🚀 Servidor a correr na porta ${PORT}`);
-  console.log(`🔗 Geral: http://localhost:${PORT}/jogadores`);
-  console.log(`🔗 Goleiros: http://localhost:${PORT}/jogadores2`);
-  console.log(`-----------------------------------------`);
+  console.log("API FutPontos rodando na porta " + PORT);
 });
