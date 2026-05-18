@@ -103,6 +103,20 @@ app.delete("/jogadores/:id", async (req, res) => {
   }
 })
 
+const path = require("path")
+
+// PWA — arquivos obrigatórios na raiz
+app.get("/manifest.json", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "manifest.json"))
+})
+
+app.get("/sw.js", (req, res) => {
+  res.setHeader("Service-Worker-Allowed", "/")
+  res.setHeader("Content-Type", "application/javascript")
+  res.sendFile(path.join(__dirname, "public", "sw.js"))
+})
+
+
 /* ======================================================
    ENDPOINTS GOLEIROS (TABELA GOLEIROS)
 ====================================================== */
