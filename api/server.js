@@ -37,10 +37,10 @@ function calculatePoints(
 ) {
   return (
     (Number(vitorias) * 3) +
-    (Number(empate) * 1) +
-    (Number(defesa) * 2) +
-    (Number(gols) * 2) -
-    (Number(infracoes) * 1)
+    (Number(empate)   * 1) +
+    (Number(defesa)   * 1) +
+    (Number(gols)     * 2) -
+    (Number(infracoes) * 2)
   );
 }
 
