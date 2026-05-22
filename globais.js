@@ -51,21 +51,21 @@ export async function apiRequest(endpoint, options = {}) {
 ====================================================== */
 
 /**
- * Regra oficial de pontuação (MESMA do backend)
- * ⚠️ Deve refletir exatamente o server.js
+ * Regra oficial de pontuação FutPontos
+ * Vitória: +3 | Gol: +2 | Empate: +1 | Defesa: +1 | Infração: -2
  */
-export function calculatePoints({
+export function calculatePoints(
   vitorias = 0,
-  gols = 0,
-  defesa = 0,
   empate = 0,
-  infracoes = 0,
-}) {
+  defesa = 0,
+  gols = 0,
+  infracoes = 0
+) {
   return (
-    Number(vitorias) +
-    Number(gols) +
-    Number(defesa) +
-    Number(empate) -
+    Number(vitorias) * 3 +
+    Number(empate)   * 1 +
+    Number(defesa)   * 1 +
+    Number(gols)     * 2 -
     Number(infracoes) * 2
   );
 }
