@@ -4,47 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sem Domínio | Gerenciar Jogadores</title>
-
   <link rel="stylesheet" href="common-nav.css" />
   <link rel="stylesheet" href="adicionar.css" />
 </head>
 <body>
-
 <header class="app-header">
-  <div class="brand">
-  </a href="https://www.semdominio.online" target="_blank" class="brand-link">
-      <h1>Sem Domínio</h1>
-    </a>
-  </div>
-
-  <nav class="app-nav">
+  <div class="brand"><h1>Sem Domínio</h1></div>
+  <button class="menu-toggle" aria-label="Abrir menu">☰</button>
+  <nav class="app-nav" aria-label="Navegação principal">
     <ul>
-      <li><a href="https://www.semdominio.online">Classificação</a></li>
+      <li><a href="index.html">Classificação</a></li>
+      <li><a href="desempenho.html">Desempenho</a></li>
+      <li><a href="desempenho-completo.html">Desempenho Completo</a></li>
+      <li><a href="montar-times.html">Montar Times</a></li>
     </ul>
   </nav>
 </header>
-
 <main class="app-main">
-
-  <!-- FORMULÁRIO -->
   <section class="form-section">
-    <header class="section-header">
-      <h2 id="formTitle">➕ Novo Jogador</h2>
-    </header>
-
+    <header class="section-header"><h2 id="formTitle">➕ Novo Jogador</h2></header>
     <form id="playerForm" class="player-form">
       <input type="hidden" id="playerId" />
-
-      <div class="form-group">
-        <label>Nome *</label>
-        <input type="text" id="nome" placeholder="Digite o nome" required />
-      </div>
-
-      <div class="form-group">
-        <label>Foto</label>
-        <input type="text" id="foto" placeholder="URL da foto" />
-      </div>
-
+      <div class="form-group"><label>Nome *</label><input type="text" id="nome" placeholder="Digite o nome" required /></div>
+      <div class="form-group"><label>Foto</label><input type="text" id="foto" placeholder="URL da foto" /></div>
       <div class="form-grid">
         <input type="number" id="gols" placeholder="Gols" min="0" />
         <input type="number" id="vitorias" placeholder="Vitórias" min="0" />
@@ -52,31 +34,19 @@
         <input type="number" id="defesa" placeholder="Defesas" min="0" />
         <input type="number" id="infracoes" placeholder="Infrações" min="0" />
       </div>
-
       <div class="form-actions">
         <button type="submit" id="submitBtn">Salvar</button>
-        <button type="button" id="cancelEdit" class="secondary hidden">
-          Cancelar edição
-        </button>
+        <button type="button" id="cancelEdit" class="secondary hidden">Cancelar edição</button>
       </div>
     </form>
   </section>
-
-  <!-- LISTA -->
   <section class="list-section">
-    <header class="section-header">
-      <h2>📋 Jogadores Cadastrados</h2>
-    </header>
-
+    <header class="section-header"><h2>📋 Jogadores Cadastrados</h2></header>
     <ul id="playerList" class="player-list"></ul>
   </section>
-
 </main>
-
 <div id="feedback" aria-live="polite"></div>
-
 <script type="module" src="./globais.js"></script>
 <script type="module" src="./adicionar.js"></script>
-
 </body>
 </html>
