@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07080D">
+  <title>FutPontos • Montar Times</title>
+  <link rel="stylesheet" href="common-nav.css">
+  <link rel="stylesheet" href="montar-times.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><h1>FutPontos</h1></div>
+    <button class="menu-toggle" aria-label="Abrir menu">☰</button>
+    <nav class="app-nav" aria-label="Navegação principal">
+      <ul>
+        <li><a href="index.html">Classificação</a></li>
+        <li><a href="desempenho.html">Desempenho</a></li>
+        <li><a href="desempenho-completo.html">Desempenho Completo</a></li>
+        <li><a href="montar-times.html">Montar Times</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="builder-page">
+    <section class="hero-builder">
+      <div>
+        <span class="eyebrow">SELEÇÃO MANUAL</span>
+        <h2>⚽ Montar Times</h2>
+        <p>Escolha os jogadores um por um. Sem sorteio e sem equilíbrio automático.</p>
+      </div>
+      <div class="hero-summary">
+        <strong id="selectedCount">0</strong>
+        <span>selecionados</span>
+      </div>
+    </section>
+
+    <section class="builder-toolbar">
+      <div class="toolbar-group">
+        <label for="teamCount">Times</label>
+        <select id="teamCount">
+          <option value="2">2 times</option>
+          <option value="3">3 times</option>
+          <option value="4">4 times</option>
+          <option value="5" selected>5 times</option>
+        </select>
+      </div>
+      <div class="toolbar-group search-group">
+        <label for="searchPlayer">Buscar</label>
+        <input id="searchPlayer" type="search" placeholder="Nome do jogador..." autocomplete="off">
+      </div>
+      <div class="toolbar-group">
+        <label for="sortPlayers">Ordenar</label>
+        <select id="sortPlayers">
+          <option value="media">Média técnica</option>
+          <option value="pontos">Pontos</option>
+          <option value="totalTec">Força técnica</option>
+          <option value="nome">Nome</option>
+        </select>
+      </div>
+      <button id="clearAll" class="btn-danger">Limpar seleção</button>
+    </section>
+
+    <div id="pageStatus" class="page-status">Carregando jogadores...</div>
+
+    <section class="builder-layout">
+      <aside class="players-panel panel">
+        <div class="panel-heading">
+          <div>
+            <h3>👥 Jogadores</h3>
+            <span id="availableCount">0 disponíveis</span>
+          </div>
+          <span class="live-dot">API</span>
+        </div>
+        <div id="playersList" class="players-list"></div>
+      </aside>
+
+      <section class="teams-panel">
+        <div class="teams-heading">
+          <div>
+            <h3>Times em formação</h3>
+            <p>Cada líder escolhe manualmente seus jogadores.</p>
+          </div>
+          <div class="selection-progress"><span id="progressValue">0</span> / <span id="maxPlayers">35</span></div>
+        </div>
+        <div id="teamsGrid" class="teams-grid"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="app-footer"></footer>
+  <div id="feedback" aria-live="polite"></div>
+
+  <script type="module" src="globais.js"></script>
+  <script type="module" src="montar-times.js"></script>
+</body>
+</html>
