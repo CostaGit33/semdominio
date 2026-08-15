@@ -37,9 +37,9 @@ function calculatePoints(
 ) {
   return (
     (Number(vitorias) * 3) +
-    (Number(empate)   * 1) +
-    (Number(defesa)   * 1) +
-    (Number(gols)     * 2) -
+    (Number(empate) * 1) +
+    (Number(defesa) * 1) +
+    (Number(gols) * 2) -
     (Number(infracoes) * 2)
   );
 }
@@ -100,10 +100,8 @@ app.get("/sw.js", (req, res) => {
    JOGADORES
 ====================================================== */
 
-/* LISTAR */
 app.get("/jogadores", async (req, res) => {
   try {
-
     const result = await pool.query(`
       SELECT *
       FROM jogadores
@@ -111,69 +109,40 @@ app.get("/jogadores", async (req, res) => {
     `);
 
     res.json(result.rows);
-
   } catch (err) {
-
     console.error("Erro ao buscar jogadores:", err);
-
-    res.status(500).json({
-      error: "Erro ao buscar jogadores"
-    });
-
+    res.status(500).json({ error: "Erro ao buscar jogadores" });
   }
 });
 
-/* BUSCAR POR ID */
 app.get("/jogadores/:id", async (req, res) => {
-
   const { id } = req.params;
 
   try {
-
     const result = await pool.query(
       "SELECT * FROM jogadores WHERE id = $1",
       [id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Jogador não encontrado"
-      });
+      return res.status(404).json({ error: "Jogador não encontrado" });
     }
 
     res.json(result.rows[0]);
-
   } catch (err) {
-
     console.error("Erro ao buscar jogador:", err);
-
-    res.status(500).json({
-      error: "Erro ao buscar jogador"
-    });
-
+    res.status(500).json({ error: "Erro ao buscar jogador" });
   }
 });
 
-/* CRIAR */
 app.post("/jogadores", async (req, res) => {
-
   const jogador = normalizePlayer(req.body);
 
   try {
-
     const result = await pool.query(
       `
       INSERT INTO jogadores
-      (
-        nome,
-        pontos,
-        vitorias,
-        empate,
-        defesa,
-        gols,
-        infracoes,
-        foto
-      )
+      (nome, pontos, vitorias, empate, defesa, gols, infracoes, foto)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING *
       `,
@@ -190,39 +159,22 @@ app.post("/jogadores", async (req, res) => {
     );
 
     res.status(201).json(result.rows[0]);
-
   } catch (err) {
-
     console.error("Erro ao salvar jogador:", err);
-
-    res.status(500).json({
-      error: "Erro ao salvar jogador"
-    });
-
+    res.status(500).json({ error: "Erro ao salvar jogador" });
   }
 });
 
-/* ATUALIZAR */
 app.put("/jogadores/:id", async (req, res) => {
-
   const { id } = req.params;
-
   const jogador = normalizePlayer(req.body);
 
   try {
-
     const result = await pool.query(
       `
       UPDATE jogadores
-      SET
-        nome = $1,
-        pontos = $2,
-        vitorias = $3,
-        empate = $4,
-        defesa = $5,
-        gols = $6,
-        infracoes = $7,
-        foto = $8
+      SET nome = $1, pontos = $2, vitorias = $3, empate = $4,
+          defesa = $5, gols = $6, infracoes = $7, foto = $8
       WHERE id = $9
       RETURNING *
       `,
@@ -240,54 +192,104 @@ app.put("/jogadores/:id", async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Jogador não encontrado"
-      });
+      return res.status(404).json({ error: "Jogador não encontrado" });
     }
 
     res.json(result.rows[0]);
-
   } catch (err) {
-
     console.error("Erro ao atualizar jogador:", err);
-
-    res.status(500).json({
-      error: "Erro ao atualizar jogador"
-    });
-
+    res.status(500).json({ error: "Erro ao atualizar jogador" });
   }
 });
 
-/* EXCLUIR */
 app.delete("/jogadores/:id", async (req, res) => {
-
   const { id } = req.params;
 
   try {
-
     const result = await pool.query(
       "DELETE FROM jogadores WHERE id = $1 RETURNING *",
       [id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Jogador não encontrado"
-      });
+      return res.status(404).json({ error: "Jogador não encontrado" });
     }
 
-    res.json({
-      success: true
-    });
-
+    res.json({ success: true });
   } catch (err) {
-
     console.error("Erro ao excluir jogador:", err);
+    res.status(500).json({ error: "Erro ao excluir jogador" });
+  }
+});
 
-    res.status(500).json({
-      error: "Erro ao excluir jogador"
+/* ======================================================
+   DESEMPENHO TÉCNICO
+   Usa jogadores + avaliacao_jogadores por jogador_id.
+   Não altera a API de classificação.
+====================================================== */
+
+app.get("/desempenho", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        j.id,
+        j.nome,
+        j.pontos,
+        j.vitorias,
+        j.empate,
+        j.gols,
+        j.defesa AS defesa_classificacao,
+        j.infracoes,
+        j.foto,
+        a.defesa AS avaliacao_defesa,
+        a.ataque AS avaliacao_ataque,
+        a.velocidade AS avaliacao_velocidade,
+        a.habilidade AS avaliacao_habilidade,
+        a.passe AS avaliacao_passe
+      FROM jogadores j
+      LEFT JOIN avaliacao_jogadores a
+        ON a.jogador_id = j.id
+      WHERE j.id NOT IN (31, 47)
+      ORDER BY j.pontos DESC, j.nome ASC
+    `);
+
+    const jogadores = result.rows.map((jogador) => {
+      const possuiAvaliacao = [
+        jogador.avaliacao_defesa,
+        jogador.avaliacao_ataque,
+        jogador.avaliacao_velocidade,
+        jogador.avaliacao_habilidade,
+        jogador.avaliacao_passe
+      ].some((valor) => valor !== null && valor !== undefined);
+
+      return {
+        id: jogador.id,
+        nome: jogador.nome,
+        pontos: jogador.pontos,
+        vitorias: jogador.vitorias,
+        empate: jogador.empate,
+        gols: jogador.gols,
+        defesaClassificacao: jogador.defesa_classificacao,
+        infracoes: jogador.infracoes,
+        foto: jogador.foto,
+        avaliacao: possuiAvaliacao
+          ? {
+              defesa: jogador.avaliacao_defesa,
+              ataque: jogador.avaliacao_ataque,
+              velocidade: jogador.avaliacao_velocidade,
+              habilidade: jogador.avaliacao_habilidade,
+              passe: jogador.avaliacao_passe
+            }
+          : null
+      };
     });
 
+    res.json(jogadores);
+  } catch (err) {
+    console.error("Erro ao buscar desempenho técnico:", err);
+    res.status(500).json({
+      error: "Erro ao buscar desempenho técnico"
+    });
   }
 });
 
@@ -295,11 +297,8 @@ app.delete("/jogadores/:id", async (req, res) => {
    GOLEIROS
 ====================================================== */
 
-/* LISTAR */
 app.get("/goleiros", async (req, res) => {
-
   try {
-
     const result = await pool.query(`
       SELECT *
       FROM goleiros
@@ -307,69 +306,40 @@ app.get("/goleiros", async (req, res) => {
     `);
 
     res.json(result.rows);
-
   } catch (err) {
-
     console.error("Erro ao buscar goleiros:", err);
-
-    res.status(500).json({
-      error: "Erro ao buscar goleiros"
-    });
-
+    res.status(500).json({ error: "Erro ao buscar goleiros" });
   }
 });
 
-/* BUSCAR POR ID */
 app.get("/goleiros/:id", async (req, res) => {
-
   const { id } = req.params;
 
   try {
-
     const result = await pool.query(
       "SELECT * FROM goleiros WHERE id = $1",
       [id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Goleiro não encontrado"
-      });
+      return res.status(404).json({ error: "Goleiro não encontrado" });
     }
 
     res.json(result.rows[0]);
-
   } catch (err) {
-
     console.error("Erro ao buscar goleiro:", err);
-
-    res.status(500).json({
-      error: "Erro ao buscar goleiro"
-    });
-
+    res.status(500).json({ error: "Erro ao buscar goleiro" });
   }
 });
 
-/* CRIAR */
 app.post("/goleiros", async (req, res) => {
-
   const goleiro = normalizePlayer(req.body);
 
   try {
-
     const result = await pool.query(
       `
       INSERT INTO goleiros
-      (
-        nome,
-        pontos,
-        vitorias,
-        empate,
-        defesa,
-        gols,
-        infracoes,
-        foto
-      )
+      (nome, pontos, vitorias, empate, defesa, gols, infracoes, foto)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING *
       `,
@@ -386,39 +356,22 @@ app.post("/goleiros", async (req, res) => {
     );
 
     res.status(201).json(result.rows[0]);
-
   } catch (err) {
-
     console.error("Erro ao salvar goleiro:", err);
-
-    res.status(500).json({
-      error: "Erro ao salvar goleiro"
-    });
-
+    res.status(500).json({ error: "Erro ao salvar goleiro" });
   }
 });
 
-/* ATUALIZAR */
 app.put("/goleiros/:id", async (req, res) => {
-
   const { id } = req.params;
-
   const goleiro = normalizePlayer(req.body);
 
   try {
-
     const result = await pool.query(
       `
       UPDATE goleiros
-      SET
-        nome = $1,
-        pontos = $2,
-        vitorias = $3,
-        empate = $4,
-        defesa = $5,
-        gols = $6,
-        infracoes = $7,
-        foto = $8
+      SET nome = $1, pontos = $2, vitorias = $3, empate = $4,
+          defesa = $5, gols = $6, infracoes = $7, foto = $8
       WHERE id = $9
       RETURNING *
       `,
@@ -436,54 +389,33 @@ app.put("/goleiros/:id", async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Goleiro não encontrado"
-      });
+      return res.status(404).json({ error: "Goleiro não encontrado" });
     }
 
     res.json(result.rows[0]);
-
   } catch (err) {
-
     console.error("Erro ao atualizar goleiro:", err);
-
-    res.status(500).json({
-      error: "Erro ao atualizar goleiro"
-    });
-
+    res.status(500).json({ error: "Erro ao atualizar goleiro" });
   }
 });
 
-/* EXCLUIR */
 app.delete("/goleiros/:id", async (req, res) => {
-
   const { id } = req.params;
 
   try {
-
     const result = await pool.query(
       "DELETE FROM goleiros WHERE id = $1 RETURNING *",
       [id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Goleiro não encontrado"
-      });
+      return res.status(404).json({ error: "Goleiro não encontrado" });
     }
 
-    res.json({
-      success: true
-    });
-
+    res.json({ success: true });
   } catch (err) {
-
     console.error("Erro ao excluir goleiro:", err);
-
-    res.status(500).json({
-      error: "Erro ao excluir goleiro"
-    });
-
+    res.status(500).json({ error: "Erro ao excluir goleiro" });
   }
 });
 
