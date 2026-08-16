@@ -23,6 +23,9 @@ const pool = new Pool({
 ====================================================== */
 
 const PORT = process.env.PORT || 3000;
+const DEFAULT_PARTIDA = "atual";
+const MAX_TIMES = 5;
+const MAX_JOGADORES_TIME = 7;
 
 /* ======================================================
    PONTUAÇÃO OFICIAL
@@ -70,6 +73,39 @@ function normalizePlayer(data = {}) {
   return jogador;
 }
 
+function partidaId(req) {
+  const valor = String(req.query.partida || req.body?.partida || DEFAULT_PARTIDA).trim();
+  return valor.slice(0, 80) || DEFAULT_PARTIDA;
+}
+
+/* ======================================================
+   TABELA DA MONTAGEM DE TIMES
+
+   A seleção fica no PostgreSQL, e não no navegador.
+   Isso permite que vários celulares/computadores vejam
+   exatamente a mesma seleção em tempo real.
+====================================================== */
+
+async function ensureMontagemTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS montagem_times (
+      id BIGSERIAL PRIMARY KEY,
+      partida VARCHAR(80) NOT NULL DEFAULT 'atual',
+      jogador_id INTEGER NOT NULL REFERENCES jogadores(id) ON DELETE CASCADE,
+      time_num INTEGER NOT NULL CHECK (time_num BETWEEN 1 AND 5),
+      ordem INTEGER NOT NULL,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (partida, jogador_id),
+      UNIQUE (partida, ordem)
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_montagem_times_partida
+    ON montagem_times (partida, time_num, ordem)
+  `);
+}
+
 /* ======================================================
    STATUS API
 ====================================================== */
@@ -92,7 +128,6 @@ app.get("/manifest.json", (req, res) => {
 app.get("/sw.js", (req, res) => {
   res.setHeader("Service-Worker-Allowed", "/");
   res.setHeader("Content-Type", "application/javascript");
-
   res.sendFile(path.join(__dirname, "public", "sw.js"));
 });
 
@@ -224,8 +259,6 @@ app.delete("/jogadores/:id", async (req, res) => {
 
 /* ======================================================
    DESEMPENHO TÉCNICO
-   Usa jogadores + avaliacao_jogadores por jogador_id.
-   Não altera a API de classificação.
 ====================================================== */
 
 app.get("/desempenho", async (req, res) => {
@@ -287,9 +320,191 @@ app.get("/desempenho", async (req, res) => {
     res.json(jogadores);
   } catch (err) {
     console.error("Erro ao buscar desempenho técnico:", err);
-    res.status(500).json({
-      error: "Erro ao buscar desempenho técnico"
+    res.status(500).json({ error: "Erro ao buscar desempenho técnico" });
+  }
+});
+
+/* ======================================================
+   MONTAGEM DE TIMES — ESTADO COMPARTILHADO
+
+   GET  /montar-times              estado atual
+   POST /montar-times/selecionar   escolhe um jogador
+   DELETE /montar-times/:jogadorId remove um jogador
+   DELETE /montar-times            limpa a partida
+
+   A escolha é gravada no banco. O UNIQUE(partida,jogador_id)
+   impede que dois líderes escolham o mesmo jogador.
+   Um advisory lock por partida evita duas escolhas simultâneas
+   receberem a mesma ordem.
+====================================================== */
+
+app.get("/montar-times", async (req, res) => {
+  const partida = partidaId(req);
+
+  try {
+    const result = await pool.query(`
+      SELECT
+        m.id,
+        m.partida,
+        m.jogador_id,
+        m.time_num,
+        m.ordem,
+        m.criado_em,
+        j.nome,
+        j.pontos,
+        j.vitorias,
+        j.empate,
+        j.gols,
+        j.defesa AS defesa_classificacao,
+        j.infracoes,
+        j.foto,
+        a.defesa AS avaliacao_defesa,
+        a.ataque AS avaliacao_ataque,
+        a.velocidade AS avaliacao_velocidade,
+        a.habilidade AS avaliacao_habilidade,
+        a.passe AS avaliacao_passe
+      FROM montagem_times m
+      JOIN jogadores j ON j.id = m.jogador_id
+      LEFT JOIN avaliacao_jogadores a ON a.jogador_id = j.id
+      WHERE m.partida = $1
+      ORDER BY m.ordem ASC
+    `, [partida]);
+
+    res.json({ partida, selecoes: result.rows });
+  } catch (err) {
+    console.error("Erro ao buscar montagem:", err);
+    res.status(500).json({ error: "Erro ao buscar montagem de times" });
+  }
+});
+
+app.post("/montar-times/selecionar", async (req, res) => {
+  const partida = partidaId(req);
+  const jogadorId = Number(req.body.jogador_id ?? req.body.jogadorId);
+  const timeNum = Number(req.body.time_num ?? req.body.time);
+
+  if (!Number.isInteger(jogadorId) || jogadorId <= 0) {
+    return res.status(400).json({ error: "jogador_id inválido" });
+  }
+
+  if (!Number.isInteger(timeNum) || timeNum < 1 || timeNum > MAX_TIMES) {
+    return res.status(400).json({ error: "time inválido" });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Serializa as escolhas da mesma partida.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [partida]);
+
+    const jogador = await client.query(
+      "SELECT id, nome FROM jogadores WHERE id = $1",
+      [jogadorId]
+    );
+
+    if (jogador.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Jogador não encontrado" });
+    }
+
+    const existente = await client.query(
+      "SELECT id, time_num, ordem FROM montagem_times WHERE partida = $1 AND jogador_id = $2",
+      [partida, jogadorId]
+    );
+
+    if (existente.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        error: "Jogador já foi escolhido",
+        selecao: existente.rows[0]
+      });
+    }
+
+    const quantidade = await client.query(
+      "SELECT COUNT(*)::int AS total FROM montagem_times WHERE partida = $1 AND time_num = $2",
+      [partida, timeNum]
+    );
+
+    if (quantidade.rows[0].total >= MAX_JOGADORES_TIME) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Este time já atingiu 7 jogadores" });
+    }
+
+    const ordemResult = await client.query(
+      "SELECT COALESCE(MAX(ordem), 0) + 1 AS ordem FROM montagem_times WHERE partida = $1",
+      [partida]
+    );
+
+    const ordem = Number(ordemResult.rows[0].ordem);
+
+    const inserido = await client.query(`
+      INSERT INTO montagem_times (partida, jogador_id, time_num, ordem)
+      VALUES ($1,$2,$3,$4)
+      RETURNING id, partida, jogador_id, time_num, ordem, criado_em
+    `, [partida, jogadorId, timeNum, ordem]);
+
+    await client.query("COMMIT");
+
+    res.status(201).json({
+      success: true,
+      jogador: jogador.rows[0],
+      selecao: inserido.rows[0]
     });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch (_) {}
+    console.error("Erro ao selecionar jogador:", err);
+
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "Jogador já foi escolhido por outro líder" });
+    }
+
+    res.status(500).json({ error: "Erro ao registrar seleção" });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete("/montar-times/:jogadorId", async (req, res) => {
+  const partida = partidaId(req);
+  const jogadorId = Number(req.params.jogadorId);
+
+  if (!Number.isInteger(jogadorId) || jogadorId <= 0) {
+    return res.status(400).json({ error: "jogadorId inválido" });
+  }
+
+  try {
+    const result = await pool.query(
+      `DELETE FROM montagem_times
+       WHERE partida = $1 AND jogador_id = $2
+       RETURNING *`,
+      [partida, jogadorId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Seleção não encontrada" });
+    }
+
+    res.json({ success: true, selecao: result.rows[0] });
+  } catch (err) {
+    console.error("Erro ao remover seleção:", err);
+    res.status(500).json({ error: "Erro ao remover seleção" });
+  }
+});
+
+app.delete("/montar-times", async (req, res) => {
+  const partida = partidaId(req);
+
+  try {
+    const result = await pool.query(
+      "DELETE FROM montagem_times WHERE partida = $1 RETURNING id",
+      [partida]
+    );
+
+    res.json({ success: true, removidos: result.rowCount });
+  } catch (err) {
+    console.error("Erro ao limpar montagem:", err);
+    res.status(500).json({ error: "Erro ao limpar montagem" });
   }
 });
 
@@ -423,6 +638,13 @@ app.delete("/goleiros/:id", async (req, res) => {
    START SERVER
 ====================================================== */
 
-app.listen(PORT, () => {
-  console.log(`API FutPontos rodando na porta ${PORT}`);
-});
+ensureMontagemTable()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`API FutPontos rodando na porta ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Erro ao preparar banco de dados:", err);
+    process.exit(1);
+  });
