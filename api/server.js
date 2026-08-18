@@ -107,6 +107,28 @@ async function ensureMontagemTable() {
 }
 
 /* ======================================================
+   TABELA DE OPERAÇÕES (N8N + GEMINI)
+   
+   Previne duplicidade de registros de partida
+====================================================== */
+
+async function ensurePartidaOperacoesTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS partida_operacoes (
+      id BIGSERIAL PRIMARY KEY,
+      operacao_id VARCHAR(255) NOT NULL UNIQUE,
+      jogadores_afetados JSONB,
+      processada_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_partida_operacoes_id
+    ON partida_operacoes (operacao_id)
+  `);
+}
+
+/* ======================================================
    STATUS API
 ====================================================== */
 
@@ -635,10 +657,256 @@ app.delete("/goleiros/:id", async (req, res) => {
 });
 
 /* ======================================================
+   REGISTRAR PARTIDA (N8N + GEMINI)
+   
+   POST /partida/registrar
+   
+   Recebe resultado interpretado do Gemini e atualiza
+   múltiplos jogadores com incremento, nunca substituição.
+   
+   Usa operacao_id para evitar duplicidade.
+====================================================== */
+
+function validateRegistroPartida(data) {
+  const erros = [];
+
+  if (!data.operacao_id || typeof data.operacao_id !== 'string' || data.operacao_id.trim() === '') {
+    erros.push("operacao_id é obrigatório e deve ser string");
+  }
+
+  // Coletivo é opcional
+  if (data.coletivo) {
+    if (!Array.isArray(data.coletivo.jogadores)) {
+      erros.push("coletivo.jogadores deve ser array");
+    } else if (data.coletivo.jogadores.length === 0) {
+      erros.push("coletivo.jogadores não pode estar vazio");
+    }
+
+    const campos = ['vitorias', 'empate', 'defesa', 'gols', 'infracoes'];
+    for (const campo of campos) {
+      if (data.coletivo[campo] !== undefined && typeof data.coletivo[campo] !== 'number') {
+        erros.push(`coletivo.${campo} deve ser number`);
+      }
+      if (data.coletivo[campo] !== undefined && data.coletivo[campo] < 0) {
+        erros.push(`coletivo.${campo} não pode ser negativo`);
+      }
+    }
+  }
+
+  // Individual é opcional
+  if (data.individual && Array.isArray(data.individual)) {
+    for (const evento of data.individual) {
+      if (!Number.isInteger(evento.jogador_id) || evento.jogador_id <= 0) {
+        erros.push(`individual: jogador_id inválido (${evento.jogador_id})`);
+      }
+
+      const campos = ['vitorias', 'empate', 'defesa', 'gols', 'infracoes'];
+      for (const campo of campos) {
+        if (evento[campo] !== undefined && typeof evento[campo] !== 'number') {
+          erros.push(`individual[${evento.jogador_id}].${campo} deve ser number`);
+        }
+        if (evento[campo] !== undefined && evento[campo] < 0) {
+          erros.push(`individual[${evento.jogador_id}].${campo} não pode ser negativo`);
+        }
+      }
+    }
+  }
+
+  return erros;
+}
+
+app.post("/partida/registrar", async (req, res) => {
+  const { operacao_id, coletivo, individual } = req.body;
+
+  // Validação básica
+  const erros = validateRegistroPartida(req.body);
+  if (erros.length > 0) {
+    return res.status(400).json({
+      error: "Validação falhou",
+      detalhes: erros
+    });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Verificar duplicidade
+    const jáProcessada = await client.query(
+      "SELECT operacao_id FROM partida_operacoes WHERE operacao_id = $1",
+      [operacao_id]
+    );
+
+    if (jáProcessada.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        error: "Operação já foi processada",
+        operacao_id: operacao_id
+      });
+    }
+
+    // Coletar todos os IDs para validação
+    const todosIds = new Set();
+    if (coletivo && Array.isArray(coletivo.jogadores)) {
+      coletivo.jogadores.forEach(id => todosIds.add(id));
+    }
+    if (individual && Array.isArray(individual)) {
+      individual.forEach(evento => todosIds.add(evento.jogador_id));
+    }
+
+    // Validar existência de todos os IDs
+    if (todosIds.size > 0) {
+      const resultado = await client.query(
+        "SELECT id FROM jogadores WHERE id = ANY($1)",
+        [Array.from(todosIds)]
+      );
+
+      const idsEncontrados = new Set(resultado.rows.map(r => r.id));
+      const idsFaltando = Array.from(todosIds).filter(id => !idsEncontrados.has(id));
+
+      if (idsFaltando.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          error: "Jogadores não encontrados",
+          ids: idsFaltando
+        });
+      }
+    }
+
+    // Preparar atualizações por jogador
+    const atualizacoes = {}; // { jogador_id: { vitorias: X, empate: Y, ... } }
+
+    // Processar coletivo
+    if (coletivo && Array.isArray(coletivo.jogadores)) {
+      const campos = ['vitorias', 'empate', 'defesa', 'gols', 'infracoes'];
+      for (const jogadorId of coletivo.jogadores) {
+        if (!atualizacoes[jogadorId]) {
+          atualizacoes[jogadorId] = { vitorias: 0, empate: 0, defesa: 0, gols: 0, infracoes: 0 };
+        }
+
+        for (const campo of campos) {
+          if (coletivo[campo] !== undefined) {
+            atualizacoes[jogadorId][campo] += coletivo[campo];
+          }
+        }
+      }
+    }
+
+    // Processar individual
+    if (individual && Array.isArray(individual)) {
+      for (const evento of individual) {
+        const { jogador_id, vitorias, empate, defesa, gols, infracoes } = evento;
+
+        if (!atualizacoes[jogador_id]) {
+          atualizacoes[jogador_id] = { vitorias: 0, empate: 0, defesa: 0, gols: 0, infracoes: 0 };
+        }
+
+        if (vitorias !== undefined) atualizacoes[jogador_id].vitorias += vitorias;
+        if (empate !== undefined) atualizacoes[jogador_id].empate += empate;
+        if (defesa !== undefined) atualizacoes[jogador_id].defesa += defesa;
+        if (gols !== undefined) atualizacoes[jogador_id].gols += gols;
+        if (infracoes !== undefined) atualizacoes[jogador_id].infracoes += infracoes;
+      }
+    }
+
+    // Aplicar atualizações no banco
+    const jogadoresAtualizados = [];
+
+    for (const [jogadorIdStr, incrementos] of Object.entries(atualizacoes)) {
+      const jogadorId = Number(jogadorIdStr);
+
+      // Buscar jogador atual
+      const jogadorAtual = await client.query(
+        "SELECT * FROM jogadores WHERE id = $1",
+        [jogadorId]
+      );
+
+      if (jogadorAtual.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          error: "Jogador não encontrado durante processamento",
+          jogador_id: jogadorId
+        });
+      }
+
+      const atual = jogadorAtual.rows[0];
+
+      // Calcular novos valores (nunca podem ficar negativos)
+      const novosDados = {
+        vitorias: Math.max(0, (atual.vitorias || 0) + (incrementos.vitorias || 0)),
+        empate: Math.max(0, (atual.empate || 0) + (incrementos.empate || 0)),
+        defesa: Math.max(0, (atual.defesa || 0) + (incrementos.defesa || 0)),
+        gols: Math.max(0, (atual.gols || 0) + (incrementos.gols || 0)),
+        infracoes: Math.max(0, (atual.infracoes || 0) + (incrementos.infracoes || 0))
+      };
+
+      // Recalcular pontos
+      const novosPontos = calculatePoints(
+        novosDados.vitorias,
+        novosDados.empate,
+        novosDados.defesa,
+        novosDados.gols,
+        novosDados.infracoes
+      );
+
+      // Atualizar no banco
+      const atualizado = await client.query(
+        `
+        UPDATE jogadores
+        SET vitorias = $1, empate = $2, defesa = $3, gols = $4, infracoes = $5, pontos = $6
+        WHERE id = $7
+        RETURNING *
+        `,
+        [
+          novosDados.vitorias,
+          novosDados.empate,
+          novosDados.defesa,
+          novosDados.gols,
+          novosDados.infracoes,
+          novosPontos,
+          jogadorId
+        ]
+      );
+
+      jogadoresAtualizados.push(atualizado.rows[0]);
+    }
+
+    // Registrar operação como processada
+    await client.query(
+      "INSERT INTO partida_operacoes (operacao_id, jogadores_afetados) VALUES ($1, $2)",
+      [
+        operacao_id,
+        JSON.stringify(Object.keys(atualizacoes).map(Number))
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    res.status(201).json({
+      success: true,
+      operacao_id: operacao_id,
+      jogadores_atualizados: jogadoresAtualizados,
+      total: jogadoresAtualizados.length
+    });
+
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch (_) {}
+    console.error("Erro ao registrar partida:", err);
+    res.status(500).json({ error: "Erro ao registrar partida", detalhes: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+/* ======================================================
    START SERVER
 ====================================================== */
 
-ensureMontagemTable()
+Promise.all([
+  ensureMontagemTable(),
+  ensurePartidaOperacoesTable()
+])
   .then(() => {
     app.listen(PORT, () => {
       console.log(`API FutPontos rodando na porta ${PORT}`);
