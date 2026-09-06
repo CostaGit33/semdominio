@@ -3,12 +3,16 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const fs = require("fs");
+const crypto = require("crypto");
+const multer = require("multer");
 const { Pool } = require("pg");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.set("trust proxy", 1);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
@@ -18,6 +22,39 @@ const PORT = process.env.PORT || 3000;
 const DEFAULT_PARTIDA = "atual";
 const MAX_TIMES = 5;
 const MAX_JOGADORES_TIME = 7;
+const UPLOAD_ROOT = path.join(__dirname, "public", "uploads");
+const PLAYER_PHOTO_ROOT = path.join(UPLOAD_ROOT, "jogadores");
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
+
+fs.mkdirSync(PLAYER_PHOTO_ROOT, { recursive: true });
+
+const photoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, PLAYER_PHOTO_ROOT),
+  filename: (req, file, cb) => {
+    const extensionByMime = {
+      "image/jpeg": ".jpg",
+      "image/png": ".png",
+      "image/webp": ".webp",
+      "image/gif": ".gif"
+    };
+    const extension = extensionByMime[file.mimetype];
+    const jogadorId = String(req.params.id).replace(/[^0-9]/g, "") || "jogador";
+    const suffix = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+    cb(null, `${jogadorId}-${suffix}${extension}`);
+  }
+});
+
+const uploadPlayerPhoto = multer({
+  storage: photoStorage,
+  limits: { fileSize: MAX_PHOTO_SIZE },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error("Formato de imagem não permitido. Use JPG, PNG, WEBP ou GIF."));
+    }
+    cb(null, true);
+  }
+});
 
 function calculatePoints(vitorias = 0, empate = 0, defesa = 0, gols = 0, infracoes = 0) {
   return (Number(vitorias) * 3) + (Number(empate) * 1) + (Number(defesa) * 1) + (Number(gols) * 2) - (Number(infracoes) * 2);
@@ -89,6 +126,11 @@ app.get("/sw.js", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "sw.js"));
 });
 
+app.use("/uploads", express.static(UPLOAD_ROOT, {
+  fallthrough: false,
+  maxAge: "7d"
+}));
+
 app.get("/jogadores", async (req, res) => {
   try {
     const result = await pool.query(`SELECT * FROM jogadores ORDER BY pontos DESC, vitorias DESC, gols DESC`);
@@ -119,6 +161,57 @@ app.put("/jogadores/:id", async (req, res) => {
     if (!result.rows.length) return res.status(404).json({ error: "Jogador não encontrado" });
     res.json(result.rows[0]);
   } catch (err) { console.error("Erro ao atualizar jogador:", err); res.status(500).json({ error: "Erro ao atualizar jogador" }); }
+});
+
+app.post("/jogadores/:id/foto", uploadPlayerPhoto.single("foto"), async (req, res) => {
+  const jogadorId = Number(req.params.id);
+  if (!Number.isInteger(jogadorId) || jogadorId <= 0) {
+    if (req.file?.path) fs.rmSync(req.file.path, { force: true });
+    return res.status(400).json({ success: false, error: "ID do jogador inválido" });
+  }
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: "Envie uma imagem no campo multipart 'foto'" });
+  }
+
+  try {
+    const jogador = await pool.query("SELECT id, foto FROM jogadores WHERE id = $1", [jogadorId]);
+    if (!jogador.rows.length) {
+      fs.rmSync(req.file.path, { force: true });
+      return res.status(404).json({ success: false, error: "Jogador não encontrado" });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const fotoUrl = `${baseUrl}/uploads/jogadores/${encodeURIComponent(req.file.filename)}`;
+    const atualizada = await pool.query(
+      "UPDATE jogadores SET foto = $1 WHERE id = $2 RETURNING id, nome, foto",
+      [fotoUrl, jogadorId]
+    );
+
+    const fotoAnterior = jogador.rows[0].foto;
+    if (fotoAnterior) {
+      try {
+        const caminhoAnterior = new URL(fotoAnterior, baseUrl).pathname;
+        const prefixo = "/uploads/jogadores/";
+        if (caminhoAnterior.startsWith(prefixo)) {
+          const nomeAnterior = path.basename(caminhoAnterior);
+          fs.rmSync(path.join(PLAYER_PHOTO_ROOT, nomeAnterior), { force: true });
+        }
+      } catch (cleanupError) {
+        console.warn("Não foi possível remover a foto anterior:", cleanupError.message);
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      jogador_id: atualizada.rows[0].id,
+      nome: atualizada.rows[0].nome,
+      foto: atualizada.rows[0].foto
+    });
+  } catch (err) {
+    fs.rmSync(req.file.path, { force: true });
+    console.error("Erro ao atualizar foto do jogador:", err);
+    return res.status(500).json({ success: false, error: "Erro ao salvar foto do jogador" });
+  }
 });
 
 app.delete("/jogadores/:id", async (req, res) => {
@@ -228,6 +321,20 @@ app.post("/partida/registrar", async (req,res)=>{
     await client.query("COMMIT");
     res.status(201).json({success:true,operacao_id,jogadores_atualizados:jogadoresAtualizados,total:jogadoresAtualizados.length});
   }catch(err){try{await client.query("ROLLBACK")}catch(_){}console.error("Erro ao registrar partida:",err);res.status(500).json({error:"Erro ao registrar partida",detalhes:err.message});}finally{client.release();}
+});
+
+app.use((err, _req, res, _next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ success: false, error: "A imagem excede o limite de 5 MB" });
+    }
+    return res.status(400).json({ success: false, error: `Falha no upload: ${err.message}` });
+  }
+  if (err) {
+    console.error("Erro de requisição:", err);
+    return res.status(400).json({ success: false, error: err.message || "Requisição inválida" });
+  }
+  return res.status(500).json({ success: false, error: "Erro interno do servidor" });
 });
 
 /* ======================================================
