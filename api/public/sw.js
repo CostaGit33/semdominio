@@ -1,4 +1,4 @@
-const CACHE_NAME = "futpontos-v2";
+const CACHE_NAME = "futpontos-v3";
 
 // Arquivos estáticos principais do aplicativo.
 // A versão do cache é incrementada quando uma página/asset novo entra no projeto.
@@ -13,7 +13,10 @@ const STATIC_ASSETS = [
   "/manifest.json",
   "/montar-times.html",
   "/montar-times.css",
-  "/montar-times.js"
+  "/montar-times.js",
+  "/perfil.html",
+  "/perfil.css",
+  "/perfil.js"
 ];
 
 self.addEventListener("install", event => {
