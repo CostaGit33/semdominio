@@ -75,6 +75,17 @@ td {
   line-height: 1.2;
 }
 
+.player-profile-link {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.player-profile-link:hover {
+  color: #ffcc00;
+  text-decoration: underline;
+}
+
 /* Botões dentro da tabela */
 td button {
   padding: 2px 6px;

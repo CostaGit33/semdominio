@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
         row.dataset.id = player.id;
 
         row.innerHTML = `
-          <td>${player.nome}</td>
+          <td><a class="player-profile-link" href="perfil.html?id=${encodeURIComponent(player.id)}">${player.nome}</a></td>
           <td>${player.pontos}</td>
           <td>${player.vitorias}</td>
           <td>${player.gols}</td>

@@ -1,0 +1,80 @@
+.profile-page {
+  background: linear-gradient(135deg, #061b45 0%, #050505 52%, #8f1111 100%);
+  min-height: 100vh;
+}
+
+.profile-header {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.4rem 1.25rem;
+  text-align: left;
+  box-shadow: 0 5px 20px rgba(0,0,0,.35);
+}
+
+.profile-brand-icon {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+.profile-header h1 { margin: .1rem 0 0; font-size: clamp(1.35rem, 4vw, 2rem); }
+.eyebrow { margin: 0; color: #ffcc00; font-size: .75rem; letter-spacing: .18em; font-weight: 700; }
+.back-link { position: absolute; left: 1rem; color: #fff; text-decoration: none; font-weight: 700; }
+.back-link:hover { color: #ffcc00; }
+
+.profile-main { width: min(100% - 2rem, 980px); margin: 2rem auto 3rem; }
+.profile-loading, .profile-error { padding: 2rem; text-align: center; background: rgba(0,0,0,.55); border-radius: 18px; }
+.profile-error { color: #ffd0d0; }
+.profile-error a { color: #ffcc00; }
+
+.profile-hero {
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
+  gap: 1.5rem;
+  align-items: center;
+  padding: 1.5rem;
+  background: linear-gradient(120deg, rgba(0,0,0,.83), rgba(123,13,13,.7));
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 24px;
+  box-shadow: 0 15px 35px rgba(0,0,0,.35);
+}
+.profile-photo { width: 180px; height: 180px; object-fit: cover; border-radius: 50%; border: 5px solid #da5252; background: #202020; }
+.profile-photo.placeholder { object-fit: contain; padding: 1.5rem; box-sizing: border-box; }
+.profile-kicker { color: #ffcc00; margin: 0 0 .35rem; font-size: .85rem; font-weight: 700; letter-spacing: .12em; }
+.profile-name { margin: 0; font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1; }
+.profile-id { margin: .7rem 0 0; color: #d6d6d6; }
+.score-box { min-width: 130px; padding: 1rem; text-align: center; background: rgba(255,204,0,.12); border: 1px solid #ffcc00; border-radius: 16px; }
+.score-label { display: block; color: #ffcc00; font-size: .8rem; font-weight: 700; letter-spacing: .12em; }
+.score-value { display: block; margin-top: .2rem; font-size: 3rem; font-weight: 800; }
+
+.stats-section { margin-top: 1.5rem; }
+.stats-section h2 { margin: 0 0 .8rem; font-size: 1.3rem; }
+.stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: .8rem; }
+.stat-card { padding: 1rem .7rem; text-align: center; background: rgba(0,0,0,.6); border-radius: 14px; border: 1px solid rgba(255,255,255,.12); }
+.stat-value { display: block; font-size: 1.8rem; font-weight: 800; }
+.stat-label { display: block; margin-top: .25rem; color: #d7d7d7; font-size: .78rem; text-transform: uppercase; }
+.stat-card.highlight { border-color: #ffcc00; }
+
+.performance-card { margin-top: 1.5rem; padding: 1.25rem; background: rgba(0,0,0,.58); border-radius: 18px; }
+.performance-card h2 { margin-top: 0; }
+.bar-row { display: grid; grid-template-columns: 100px 1fr 42px; gap: .7rem; align-items: center; margin: .75rem 0; }
+.bar-label, .bar-value { font-weight: 700; }
+.bar-track { height: 10px; overflow: hidden; background: rgba(255,255,255,.14); border-radius: 99px; }
+.bar-fill { height: 100%; min-width: 2px; background: linear-gradient(90deg, #0041a8, #d62828); border-radius: inherit; transition: width .5s ease; }
+.profile-actions { margin-top: 1.5rem; display: flex; justify-content: center; }
+.profile-actions a { padding: .8rem 1.2rem; color: #fff; text-decoration: none; background: linear-gradient(90deg,#000,#d62828); border-radius: 999px; font-weight: 700; }
+.profile-footer { padding: 1rem; text-align: center; color: #ddd; }
+
+@media (max-width: 700px) {
+  .profile-header { justify-content: flex-end; padding-left: 6.5rem; }
+  .profile-hero { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .profile-photo { width: 145px; height: 145px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .stat-card:last-child { grid-column: span 2; }
+  .bar-row { grid-template-columns: 82px 1fr 34px; gap: .4rem; font-size: .85rem; }
+}
