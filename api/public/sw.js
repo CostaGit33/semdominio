@@ -1,4 +1,4 @@
-const CACHE_NAME = "futpontos-v3";
+const CACHE_NAME = "futpontos-v4";
 
 // Arquivos estáticos principais do aplicativo.
 // A versão do cache é incrementada quando uma página/asset novo entra no projeto.
