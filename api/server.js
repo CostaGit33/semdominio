@@ -35,7 +35,8 @@ const photoStorage = multer.diskStorage({
       "image/jpeg": ".jpg",
       "image/png": ".png",
       "image/webp": ".webp",
-      "image/gif": ".gif"
+      "image/gif": ".gif",
+      "application/octet-stream": ".jpg"
     };
     const extension = extensionByMime[file.mimetype];
     const jogadorId = String(req.params.id).replace(/[^0-9]/g, "") || "jogador";
@@ -48,7 +49,8 @@ const uploadPlayerPhoto = multer({
   storage: photoStorage,
   limits: { fileSize: MAX_PHOTO_SIZE },
   fileFilter: (_req, file, cb) => {
-    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    // O Telegram/n8n pode entregar o arquivo baixado sem MIME e usar octet-stream.
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/octet-stream"];
     if (!allowed.includes(file.mimetype)) {
       return cb(new Error("Formato de imagem não permitido. Use JPG, PNG, WEBP ou GIF."));
     }
