@@ -31,6 +31,7 @@ fs.mkdirSync(PLAYER_PHOTO_ROOT, { recursive: true });
 const photoStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, PLAYER_PHOTO_ROOT),
   filename: (req, file, cb) => {
+    const mime = String(file.mimetype || "").split(";", 1)[0].trim().toLowerCase();
     const extensionByMime = {
       "image/jpeg": ".jpg",
       "image/png": ".png",
@@ -38,7 +39,7 @@ const photoStorage = multer.diskStorage({
       "image/gif": ".gif",
       "application/octet-stream": ".jpg"
     };
-    const extension = extensionByMime[file.mimetype];
+    const extension = extensionByMime[mime] || (mime.startsWith("image/") ? ".jpg" : ".jpg");
     const jogadorId = String(req.params.id).replace(/[^0-9]/g, "") || "jogador";
     const suffix = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
     cb(null, `${jogadorId}-${suffix}${extension}`);
@@ -49,9 +50,10 @@ const uploadPlayerPhoto = multer({
   storage: photoStorage,
   limits: { fileSize: MAX_PHOTO_SIZE },
   fileFilter: (_req, file, cb) => {
-    // O Telegram/n8n pode entregar o arquivo baixado sem MIME e usar octet-stream.
-    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/octet-stream"];
-    if (!allowed.includes(file.mimetype)) {
+    // O Telegram/n8n pode entregar o arquivo com MIME ausente, parametrizado ou octet-stream.
+    const mime = String(file.mimetype || "").split(";", 1)[0].trim().toLowerCase();
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/octet-stream", ""];
+    if (!allowed.includes(mime) && !mime.startsWith("image/")) {
       return cb(new Error("Formato de imagem não permitido. Use JPG, PNG, WEBP ou GIF."));
     }
     cb(null, true);
