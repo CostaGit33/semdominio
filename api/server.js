@@ -99,6 +99,62 @@ async function ensureMontagemTable() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_montagem_times_partida ON montagem_times (partida, time_num, ordem)`);
 }
 
+
+async function ensureCompetenciaTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS competencias (
+      id BIGSERIAL PRIMARY KEY,
+      chave VARCHAR(7) NOT NULL UNIQUE,
+      nome VARCHAR(80) NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'aberta' CHECK (status IN ('aberta','fechada')),
+      aberta_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      fechada_em TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS desempenho_mensal (
+      id BIGSERIAL PRIMARY KEY,
+      competencia_id BIGINT NOT NULL REFERENCES competencias(id) ON DELETE CASCADE,
+      jogador_id INTEGER NOT NULL REFERENCES jogadores(id) ON DELETE CASCADE,
+      pontos INTEGER NOT NULL DEFAULT 0,
+      gols INTEGER NOT NULL DEFAULT 0,
+      defesa INTEGER NOT NULL DEFAULT 0,
+      vitorias INTEGER NOT NULL DEFAULT 0,
+      empate INTEGER NOT NULL DEFAULT 0,
+      infracoes INTEGER NOT NULL DEFAULT 0,
+      ataque INTEGER,
+      velocidade INTEGER,
+      habilidade INTEGER,
+      passe INTEGER,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (competencia_id, jogador_id)
+    )
+  `);
+  const chave = new Date().toISOString().slice(0, 7);
+  await pool.query(`INSERT INTO competencias (chave, nome) VALUES ($1, $2) ON CONFLICT (chave) DO NOTHING`, [chave, `Competência ${chave}`]);
+  const competencia = await pool.query(`SELECT id FROM competencias WHERE chave=$1`, [chave]);
+  const competenciaId = competencia.rows[0].id;
+  await pool.query(`
+    INSERT INTO desempenho_mensal (competencia_id,jogador_id,pontos,gols,defesa,vitorias,empate,infracoes)
+    SELECT $1,j.id,COALESCE(j.pontos,0),COALESCE(j.gols,0),COALESCE(j.defesa,0),COALESCE(j.vitorias,0),COALESCE(j.empate,0),COALESCE(j.infracoes,0)
+    FROM jogadores j
+    ON CONFLICT (competencia_id,jogador_id) DO NOTHING
+  `, [competenciaId]);
+}
+
+async function currentCompetencia(client = pool) {
+  const result = await client.query(`SELECT * FROM competencias WHERE status='aberta' ORDER BY id DESC LIMIT 1`);
+  if (!result.rows.length) throw new Error('Nenhuma competência mensal aberta');
+  return result.rows[0];
+}
+
+function nextCompetencia(chave) {
+  const [ano, mes] = String(chave).split('-').map(Number);
+  const date = new Date(Date.UTC(ano, mes, 1));
+  return date.toISOString().slice(0, 7);
+}
+
 async function ensurePartidaOperacoesTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS partida_operacoes (
@@ -110,6 +166,8 @@ async function ensurePartidaOperacoesTable() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_partida_operacoes_id ON partida_operacoes (operacao_id)`);
 }
+
+const monthlyReady = ensureCompetenciaTable();
 
 app.get("/", (req, res) => res.json({ status: "online", message: "API FutPontos ONLINE" }));
 
@@ -137,33 +195,87 @@ app.use("/uploads", express.static(UPLOAD_ROOT, {
 
 app.get("/jogadores", async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM jogadores ORDER BY pontos DESC, vitorias DESC, gols DESC`);
+    await monthlyReady;
+    const competencia = await currentCompetencia();
+    const result = await pool.query(`SELECT j.id,j.nome,j.foto,j.criado_em,dm.pontos,dm.vitorias,dm.gols,dm.defesa,dm.empate,dm.infracoes, $1::text AS competencia FROM jogadores j JOIN desempenho_mensal dm ON dm.jogador_id=j.id AND dm.competencia_id=$2 ORDER BY dm.pontos DESC, dm.vitorias DESC, dm.gols DESC`, [competencia.chave, competencia.id]);
     res.json(result.rows);
   } catch (err) { console.error("Erro ao buscar jogadores:", err); res.status(500).json({ error: "Erro ao buscar jogadores" }); }
 });
 
 app.get("/jogadores/:id", async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM jogadores WHERE id = $1", [req.params.id]);
+    await monthlyReady;
+    const competencia = await currentCompetencia();
+    const result = await pool.query(`SELECT j.id,j.nome,j.foto,j.criado_em,dm.pontos,dm.vitorias,dm.gols,dm.defesa,dm.empate,dm.infracoes,$1::text AS competencia FROM jogadores j JOIN desempenho_mensal dm ON dm.jogador_id=j.id AND dm.competencia_id=$2 WHERE j.id=$3`, [competencia.chave, competencia.id, req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: "Jogador não encontrado" });
     res.json(result.rows[0]);
   } catch (err) { console.error("Erro ao buscar jogador:", err); res.status(500).json({ error: "Erro ao buscar jogador" }); }
+});
+
+app.get("/competencias", async (_req, res) => {
+  try {
+    await monthlyReady;
+    const result = await pool.query(`SELECT c.id,c.chave,c.nome,c.status,c.aberta_em,c.fechada_em,COUNT(dm.id)::int AS jogadores FROM competencias c LEFT JOIN desempenho_mensal dm ON dm.competencia_id=c.id GROUP BY c.id ORDER BY c.chave DESC`);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: "Erro ao listar competências" }); }
+});
+
+app.get("/competencias/atual", async (_req, res) => {
+  try {
+    await monthlyReady;
+    const competencia = await currentCompetencia();
+    const total = await pool.query(`SELECT COUNT(*)::int AS jogadores, COALESCE(SUM(pontos),0)::int AS pontos FROM desempenho_mensal WHERE competencia_id=$1`, [competencia.id]);
+    res.json({ ...competencia, resumo: total.rows[0] });
+  } catch (err) { res.status(500).json({ error: "Erro ao buscar competência atual" }); }
+});
+
+app.get("/competencias/:id/jogadores", async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT j.id,j.nome,j.foto,dm.pontos,dm.gols,dm.defesa,dm.vitorias,dm.empate,dm.infracoes,c.chave AS competencia FROM desempenho_mensal dm JOIN jogadores j ON j.id=dm.jogador_id JOIN competencias c ON c.id=dm.competencia_id WHERE c.id=$1 ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.gols DESC`, [req.params.id]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: "Erro ao consultar histórico mensal" }); }
+});
+
+app.post("/competencias/fechar", async (req, res) => {
+  if (req.body?.confirm !== true) return res.status(400).json({ error: "Confirmação obrigatória", required: "confirm=true" });
+  const client = await pool.connect();
+  try {
+    await monthlyReady;
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('fechamento-competencia'))");
+    const atual = await currentCompetencia(client);
+    const ranking = await client.query(`SELECT j.id,j.nome,dm.pontos,dm.gols,dm.defesa,dm.vitorias,dm.empate,dm.infracoes FROM desempenho_mensal dm JOIN jogadores j ON j.id=dm.jogador_id WHERE dm.competencia_id=$1 ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.gols DESC`, [atual.id]);
+    await client.query(`UPDATE competencias SET status='fechada',fechada_em=NOW() WHERE id=$1`, [atual.id]);
+    const chaveNova = nextCompetencia(atual.chave);
+    const criada = await client.query(`INSERT INTO competencias (chave,nome,status) VALUES ($1,$2,'aberta') ON CONFLICT (chave) DO UPDATE SET status='aberta' RETURNING *`, [chaveNova, `Competência ${chaveNova}`]);
+    const nova = criada.rows[0];
+    await client.query(`INSERT INTO desempenho_mensal (competencia_id,jogador_id) SELECT $1,id FROM jogadores ON CONFLICT (competencia_id,jogador_id) DO NOTHING`, [nova.id]);
+    await client.query("COMMIT");
+    res.status(201).json({ success: true, encerrada: atual, nova_competencia: nova, ranking_final: ranking.rows });
+  } catch (err) { await client.query("ROLLBACK").catch(() => {}); console.error("Erro ao fechar competência:", err); res.status(500).json({ error: "Erro ao fechar competência", detalhes: err.message }); }
+  finally { client.release(); }
 });
 
 app.post("/jogadores", async (req, res) => {
   const jogador = normalizePlayer(req.body);
   try {
     const result = await pool.query(`INSERT INTO jogadores (nome, pontos, vitorias, empate, defesa, gols, infracoes, foto) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [jogador.nome, jogador.pontos, jogador.vitorias, jogador.empate, jogador.defesa, jogador.gols, jogador.infracoes, jogador.foto]);
-    res.status(201).json(result.rows[0]);
+    await monthlyReady;
+    const competencia = await currentCompetencia();
+    await pool.query(`INSERT INTO desempenho_mensal (competencia_id,jogador_id,pontos,gols,defesa,vitorias,empate,infracoes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [competencia.id, result.rows[0].id, jogador.pontos, jogador.gols, jogador.defesa, jogador.vitorias, jogador.empate, jogador.infracoes]);
+    res.status(201).json({ ...result.rows[0], competencia: competencia.chave });
   } catch (err) { console.error("Erro ao salvar jogador:", err); res.status(500).json({ error: "Erro ao salvar jogador" }); }
 });
 
 app.put("/jogadores/:id", async (req, res) => {
   const jogador = normalizePlayer(req.body);
   try {
-    const result = await pool.query(`UPDATE jogadores SET nome=$1,pontos=$2,vitorias=$3,empate=$4,defesa=$5,gols=$6,infracoes=$7,foto=$8 WHERE id=$9 RETURNING *`, [jogador.nome, jogador.pontos, jogador.vitorias, jogador.empate, jogador.defesa, jogador.gols, jogador.infracoes, jogador.foto, req.params.id]);
+    const result = await pool.query(`UPDATE jogadores SET nome=$1,foto=$2 WHERE id=$3 RETURNING *`, [jogador.nome, jogador.foto, req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: "Jogador não encontrado" });
-    res.json(result.rows[0]);
+    await monthlyReady;
+    const competencia = await currentCompetencia();
+    await pool.query(`INSERT INTO desempenho_mensal (competencia_id,jogador_id,pontos,gols,defesa,vitorias,empate,infracoes,atualizado_em) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW()) ON CONFLICT (competencia_id,jogador_id) DO UPDATE SET pontos=$3,gols=$4,defesa=$5,vitorias=$6,empate=$7,infracoes=$8,atualizado_em=NOW()`, [competencia.id, req.params.id, jogador.pontos, jogador.gols, jogador.defesa, jogador.vitorias, jogador.empate, jogador.infracoes]);
+    res.json({ ...result.rows[0], pontos: jogador.pontos, gols: jogador.gols, defesa: jogador.defesa, vitorias: jogador.vitorias, empate: jogador.empate, infracoes: jogador.infracoes, competencia: competencia.chave });
   } catch (err) { console.error("Erro ao atualizar jogador:", err); res.status(500).json({ error: "Erro ao atualizar jogador" }); }
 });
 
@@ -313,13 +425,15 @@ app.post("/partida/registrar", async (req,res)=>{
     if(individual&&Array.isArray(individual))for(const e of individual){const {jogador_id,vitorias,empate,defesa,gols,infracoes}=e;if(!atualizacoes[jogador_id])atualizacoes[jogador_id]={vitorias:0,empate:0,defesa:0,gols:0,infracoes:0};if(vitorias!==undefined)atualizacoes[jogador_id].vitorias+=vitorias;if(empate!==undefined)atualizacoes[jogador_id].empate+=empate;if(defesa!==undefined)atualizacoes[jogador_id].defesa+=defesa;if(gols!==undefined)atualizacoes[jogador_id].gols+=gols;if(infracoes!==undefined)atualizacoes[jogador_id].infracoes+=infracoes;}
     const jogadoresAtualizados=[];
     for(const [idStr,inc] of Object.entries(atualizacoes)){
-      const id=Number(idStr), atualResult=await client.query("SELECT * FROM jogadores WHERE id=$1",[id]);
-      if(!atualResult.rows.length){await client.query("ROLLBACK");return res.status(400).json({error:"Jogador não encontrado durante processamento",jogador_id:id});}
-      const atual=atualResult.rows[0];
+      const id=Number(idStr), jogadorResult=await client.query("SELECT * FROM jogadores WHERE id=$1",[id]);
+      if(!jogadorResult.rows.length){await client.query("ROLLBACK");return res.status(400).json({error:"Jogador não encontrado durante processamento",jogador_id:id});}
+      const competencia=await currentCompetencia(client);
+      const atualResult=await client.query("SELECT * FROM desempenho_mensal WHERE competencia_id=$1 AND jogador_id=$2 FOR UPDATE",[competencia.id,id]);
+      const atual=atualResult.rows[0] || {vitorias:0,empate:0,defesa:0,gols:0,infracoes:0};
       const novos={vitorias:Math.max(0,(atual.vitorias||0)+(inc.vitorias||0)),empate:Math.max(0,(atual.empate||0)+(inc.empate||0)),defesa:Math.max(0,(atual.defesa||0)+(inc.defesa||0)),gols:Math.max(0,(atual.gols||0)+(inc.gols||0)),infracoes:Math.max(0,(atual.infracoes||0)+(inc.infracoes||0))};
       const pontos=calculatePoints(novos.vitorias,novos.empate,novos.defesa,novos.gols,novos.infracoes);
-      const atualizado=await client.query("UPDATE jogadores SET vitorias=$1,empate=$2,defesa=$3,gols=$4,infracoes=$5,pontos=$6 WHERE id=$7 RETURNING *",[novos.vitorias,novos.empate,novos.defesa,novos.gols,novos.infracoes,pontos,id]);
-      jogadoresAtualizados.push(atualizado.rows[0]);
+      const atualizado=await client.query(`INSERT INTO desempenho_mensal (competencia_id,jogador_id,vitorias,empate,defesa,gols,infracoes,pontos) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (competencia_id,jogador_id) DO UPDATE SET vitorias=$3,empate=$4,defesa=$5,gols=$6,infracoes=$7,pontos=$8,atualizado_em=NOW() RETURNING *`,[competencia.id,id,novos.vitorias,novos.empate,novos.defesa,novos.gols,novos.infracoes,pontos]);
+      jogadoresAtualizados.push({...jogadorResult.rows[0],...atualizado.rows[0]});
     }
     await client.query("INSERT INTO partida_operacoes (operacao_id,jogadores_afetados) VALUES($1,$2)",[operacao_id,JSON.stringify(Object.keys(atualizacoes).map(Number))]);
     await client.query("COMMIT");
@@ -351,7 +465,7 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`API FutPontos rodando na porta ${PORT}`);
-  Promise.all([ensureMontagemTable(), ensurePartidaOperacoesTable()])
+  Promise.all([monthlyReady, ensureMontagemTable(), ensurePartidaOperacoesTable()])
     .then(() => console.log("Banco preparado com sucesso."))
     .catch((err) => console.error("Erro ao preparar banco de dados (API continua online):", err));
 });
