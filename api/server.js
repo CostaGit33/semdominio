@@ -531,6 +531,8 @@ app.get("/goleiros", async (req,res)=>{
           ELSE ROUND(COALESCE(dm.gols_sofridos,0)::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0
           ELSE ROUND((COALESCE(dm.vitorias,0)::numeric * 100) / dm.jogos_disputados, 2) END AS aproveitamento_vitorias,
+        CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0
+          ELSE ROUND(COALESCE(dm.defesas,0)::numeric / dm.jogos_disputados, 2) END AS media_defesas,
         $1::text AS competencia
       FROM goleiros g
       LEFT JOIN desempenho_mensal_goleiros dm ON dm.goleiro_id=g.id AND dm.competencia_id=$2
@@ -550,7 +552,7 @@ app.get("/goleiros/ranking", async (req,res)=>{
     const result = await pool.query(`
       SELECT ROW_NUMBER() OVER (ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.gols DESC,dm.defesas DESC,g.nome ASC)::int AS posicao,
         g.id AS goleiro_id,g.nome,g.foto,dm.pontos,dm.jogos_disputados,dm.vitorias,dm.empates,dm.derrotas,
-        dm.defesas,dm.gols,dm.gols_sofridos,dm.infracoes,
+        dm.defesas,dm.defesas AS defesa,dm.empates AS empate,dm.gols,dm.gols_sofridos,dm.infracoes,
         CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos,
         CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND((dm.vitorias::numeric * 100) / dm.jogos_disputados, 2) END AS aproveitamento_vitorias,
         CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.defesas::numeric / dm.jogos_disputados, 2) END AS media_defesas
@@ -588,6 +590,7 @@ app.get("/goleiros/:id", async (req,res)=>{
         COALESCE(dm.gols_sofridos,0)::int AS gols_sofridos,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND((dm.vitorias::numeric * 100) / dm.jogos_disputados, 2) END AS aproveitamento_vitorias,
+        CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND(dm.defesas::numeric / dm.jogos_disputados, 2) END AS media_defesas,
         c.chave AS competencia
       FROM goleiros g LEFT JOIN LATERAL (SELECT * FROM competencias WHERE status='aberta' ORDER BY id DESC LIMIT 1) c ON TRUE
       LEFT JOIN desempenho_mensal_goleiros dm ON dm.goleiro_id=g.id AND dm.competencia_id=c.id
