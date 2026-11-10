@@ -196,6 +196,31 @@ async function ensurePartidaOperacoesTable() {
 }
 
 async function ensureGoalkeeperTables() {
+  // Garante a tabela-base antes de criar as tabelas de desempenho e histórico.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS goleiros (
+      id SERIAL PRIMARY KEY,
+      nome VARCHAR(255) NOT NULL,
+      pontos INTEGER NOT NULL DEFAULT 0,
+      vitorias INTEGER NOT NULL DEFAULT 0,
+      empate INTEGER NOT NULL DEFAULT 0,
+      defesa INTEGER NOT NULL DEFAULT 0,
+      gols INTEGER NOT NULL DEFAULT 0,
+      infracoes INTEGER NOT NULL DEFAULT 0,
+      foto TEXT,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS nome VARCHAR(255) NOT NULL DEFAULT 'Sem nome'`);
+  await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS pontos INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS vitorias INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS empate INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS defesa INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS gols INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS infracoes INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS foto TEXT`);
+  await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS desempenho_mensal_goleiros (
       id BIGSERIAL PRIMARY KEY,
@@ -486,16 +511,23 @@ app.get("/goleiros", async (req,res)=>{
     await goalkeeperReady;
     const competencia = await currentCompetencia();
     const result = await pool.query(`
-      SELECT g.id,g.nome,g.foto,g.criado_em,
+      SELECT
+        ROW_NUMBER() OVER (ORDER BY COALESCE(dm.pontos,g.pontos,0) DESC,
+          COALESCE(dm.vitorias,g.vitorias,0) DESC,
+          COALESCE(dm.defesas,g.defesa,0) DESC,g.nome ASC)::int AS posicao,
+        g.id,g.nome,g.foto,g.criado_em,
         COALESCE(dm.pontos,g.pontos,0)::int AS pontos,
         COALESCE(dm.vitorias,g.vitorias,0)::int AS vitorias,
         COALESCE(dm.empates,g.empate,0)::int AS empate,
+        COALESCE(dm.empates,g.empate,0)::int AS empates,
         COALESCE(dm.gols,g.gols,0)::int AS gols,
         COALESCE(dm.defesas,g.defesa,0)::int AS defesa,
+        COALESCE(dm.defesas,g.defesa,0)::int AS defesas,
         COALESCE(dm.infracoes,g.infracoes,0)::int AS infracoes,
         COALESCE(dm.jogos_disputados,0)::int AS jogos_disputados,
         COALESCE(dm.derrotas,0)::int AS derrotas,
         COALESCE(dm.gols_sofridos,0)::int AS gols_sofridos,
+        COALESCE(dm.infracoes,g.infracoes,0)::int AS infracoes,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0
           ELSE ROUND(COALESCE(dm.gols_sofridos,0)::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0
@@ -518,8 +550,11 @@ app.get("/goleiros/ranking", async (req,res)=>{
     if (!competencia) return res.status(404).json({error:"Competência não encontrada"});
     const result = await pool.query(`
       SELECT ROW_NUMBER() OVER (ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.gols DESC,dm.defesas DESC,g.nome ASC)::int AS posicao,
-        g.id AS goleiro_id,g.nome,g.foto,dm.pontos,dm.jogos_disputados,dm.vitorias,dm.empates,dm.derrotas,dm.defesas,dm.gols,dm.gols_sofridos,
-        CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos
+        g.id AS goleiro_id,g.nome,g.foto,dm.pontos,dm.jogos_disputados,dm.vitorias,dm.empates,dm.derrotas,
+        dm.defesas,dm.gols,dm.gols_sofridos,dm.infracoes,
+        CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos,
+        CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND((dm.vitorias::numeric * 100) / dm.jogos_disputados, 2) END AS aproveitamento_vitorias,
+        CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.defesas::numeric / dm.jogos_disputados, 2) END AS media_defesas
       FROM desempenho_mensal_goleiros dm JOIN goleiros g ON g.id=dm.goleiro_id
       WHERE dm.competencia_id=$1 ORDER BY posicao LIMIT $2
     `, [competencia.id, limit]);
