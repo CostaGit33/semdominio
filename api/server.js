@@ -527,7 +527,6 @@ app.get("/goleiros", async (req,res)=>{
         COALESCE(dm.jogos_disputados,0)::int AS jogos_disputados,
         COALESCE(dm.derrotas,0)::int AS derrotas,
         COALESCE(dm.gols_sofridos,0)::int AS gols_sofridos,
-        COALESCE(dm.infracoes,g.infracoes,0)::int AS infracoes,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0
           ELSE ROUND(COALESCE(dm.gols_sofridos,0)::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0
