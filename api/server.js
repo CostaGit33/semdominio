@@ -536,7 +536,7 @@ app.get("/goleiros/:id/partidas", async (req,res)=>{
 app.get("/goleiros/:id/evolucao", async (req,res)=>{
   try {
     await goalkeeperReady;
-    const result = await pool.query(`SELECT c.id,c.chave,c.nome,c.status,dm.pontos,dm.jogos_disputados,dm.vitorias,dm.empates,dm.derrotas,dm.defesas,dm.gols_sofridos,dm.infracoes,CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos FROM desempenho_mensal_goleiros dm JOIN competencias c ON c.id=dm.competencia_id WHERE dm.goleiro_id=$1 ORDER BY c.chave ASC`, [req.params.id]);
+    const result = await pool.query(`SELECT c.id,c.chave,c.nome,c.status,dm.pontos,dm.jogos_disputados,dm.vitorias,dm.empates,dm.derrotas,dm.defesas,dm.gols,dm.gols_sofridos,dm.infracoes,CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos FROM desempenho_mensal_goleiros dm JOIN competencias c ON c.id=dm.competencia_id WHERE dm.goleiro_id=$1 ORDER BY c.chave ASC`, [req.params.id]);
     res.json(result.rows);
   } catch(err) { console.error("Erro ao buscar evolução do goleiro:",err); res.status(500).json({error:"Erro ao buscar evolução do goleiro"}); }
 });
