@@ -321,7 +321,7 @@ app.get("/competencias/:id/goleiros", async (req, res) => {
         dm.defesas,dm.gols,dm.gols_sofridos,dm.infracoes,c.chave AS competencia,
         CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos
       FROM desempenho_mensal_goleiros dm JOIN goleiros g ON g.id=dm.goleiro_id JOIN competencias c ON c.id=dm.competencia_id
-      WHERE c.id=$1 ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.defesas DESC,g.nome ASC
+      WHERE c.id=$1 ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.gols DESC,dm.defesas DESC,g.nome ASC
     `, [req.params.id]);
     res.json(result.rows);
   } catch (err) { console.error("Erro ao consultar histórico de goleiros:", err); res.status(500).json({ error: "Erro ao consultar histórico de goleiros" }); }
@@ -517,7 +517,7 @@ app.get("/goleiros/ranking", async (req,res)=>{
       : await currentCompetencia();
     if (!competencia) return res.status(404).json({error:"Competência não encontrada"});
     const result = await pool.query(`
-      SELECT ROW_NUMBER() OVER (ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.defesas DESC,g.nome ASC)::int AS posicao,
+      SELECT ROW_NUMBER() OVER (ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.gols DESC,dm.defesas DESC,g.nome ASC)::int AS posicao,
         g.id AS goleiro_id,g.nome,g.foto,dm.pontos,dm.jogos_disputados,dm.vitorias,dm.empates,dm.derrotas,dm.defesas,dm.gols,dm.gols_sofridos,
         CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos
       FROM desempenho_mensal_goleiros dm JOIN goleiros g ON g.id=dm.goleiro_id
@@ -555,7 +555,7 @@ app.get("/goleiros/:id", async (req,res)=>{
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND((dm.vitorias::numeric * 100) / dm.jogos_disputados, 2) END AS aproveitamento_vitorias,
         c.chave AS competencia
-      FROM goleiros g CROSS JOIN (SELECT * FROM competencias WHERE status='aberta' ORDER BY id DESC LIMIT 1) c
+      FROM goleiros g LEFT JOIN LATERAL (SELECT * FROM competencias WHERE status='aberta' ORDER BY id DESC LIMIT 1) c ON TRUE
       LEFT JOIN desempenho_mensal_goleiros dm ON dm.goleiro_id=g.id AND dm.competencia_id=c.id
       WHERE g.id=$1
     `,[req.params.id]);
@@ -573,7 +573,24 @@ app.post("/goleiros", async (req,res)=>{
     res.status(201).json(result.rows[0]);
   } catch(err) { console.error("Erro ao salvar goleiro:",err);res.status(500).json({error:"Erro ao salvar goleiro"}); }
 });
-app.put("/goleiros/:id", async (req,res)=>{const goleiro=normalizePlayer(req.body);try{const result=await pool.query("UPDATE goleiros SET nome=$1,pontos=$2,vitorias=$3,empate=$4,defesa=$5,gols=$6,infracoes=$7,foto=$8 WHERE id=$9 RETURNING *",[goleiro.nome,goleiro.pontos,goleiro.vitorias,goleiro.empate,goleiro.defesa,goleiro.gols,goleiro.infracoes,goleiro.foto,req.params.id]);if(!result.rows.length)return res.status(404).json({error:"Goleiro não encontrado"});res.json(result.rows[0]);}catch(err){console.error("Erro ao atualizar goleiro:",err);res.status(500).json({error:"Erro ao atualizar goleiro"});}});
+app.put("/goleiros/:id", async (req,res)=>{
+  const goleiro=normalizePlayer(req.body);
+  const client=await pool.connect();
+  try{
+    await goalkeeperReady;
+    await client.query("BEGIN");
+    const result=await client.query("UPDATE goleiros SET nome=$1,pontos=$2,vitorias=$3,empate=$4,defesa=$5,gols=$6,infracoes=$7,foto=$8 WHERE id=$9 RETURNING *",[goleiro.nome,goleiro.pontos,goleiro.vitorias,goleiro.empate,goleiro.defesa,goleiro.gols,goleiro.infracoes,goleiro.foto,req.params.id]);
+    if(!result.rows.length){await client.query("ROLLBACK");return res.status(404).json({error:"Goleiro não encontrado"});}
+    const competencia=await currentCompetencia(client);
+    await client.query(`INSERT INTO desempenho_mensal_goleiros (competencia_id,goleiro_id,pontos,vitorias,empates,defesas,gols,infracoes)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (competencia_id,goleiro_id) DO UPDATE SET pontos=$3,vitorias=$4,empates=$5,defesas=$6,gols=$7,infracoes=$8,atualizado_em=NOW()`,
+      [competencia.id,req.params.id,goleiro.pontos,goleiro.vitorias,goleiro.empate,goleiro.defesa,goleiro.gols,goleiro.infracoes]);
+    await client.query("COMMIT");
+    res.json({...result.rows[0],competencia:competencia.chave});
+  }catch(err){await client.query("ROLLBACK").catch(()=>{});console.error("Erro ao atualizar goleiro:",err);res.status(500).json({error:"Erro ao atualizar goleiro"});}
+  finally{client.release();}
+});
 app.post("/goleiros/:id/foto", uploadGoalkeeperPhoto.single("foto"), async (req,res)=>{
   const goleiroId=Number(req.params.id);
   if(!Number.isInteger(goleiroId)||goleiroId<=0){if(req.file?.path)fs.rmSync(req.file.path,{force:true});return res.status(400).json({success:false,error:"ID do goleiro inválido"});}
