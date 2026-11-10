@@ -207,6 +207,7 @@ async function ensureGoalkeeperTables() {
       empates INTEGER NOT NULL DEFAULT 0,
       derrotas INTEGER NOT NULL DEFAULT 0,
       defesas INTEGER NOT NULL DEFAULT 0,
+      gols INTEGER NOT NULL DEFAULT 0,
       gols_sofridos INTEGER NOT NULL DEFAULT 0,
       infracoes INTEGER NOT NULL DEFAULT 0,
       criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -222,6 +223,7 @@ async function ensureGoalkeeperTables() {
       goleiro_id INTEGER NOT NULL REFERENCES goleiros(id) ON DELETE CASCADE,
       resultado VARCHAR(10) NOT NULL CHECK (resultado IN ('vitoria','empate','derrota')),
       defesas INTEGER NOT NULL DEFAULT 0,
+      gols INTEGER NOT NULL DEFAULT 0,
       gols_sofridos INTEGER NOT NULL DEFAULT 0,
       infracoes INTEGER NOT NULL DEFAULT 0,
       pontos INTEGER NOT NULL DEFAULT 0,
@@ -229,12 +231,14 @@ async function ensureGoalkeeperTables() {
       UNIQUE (operacao_id, goleiro_id)
     )
   `);
+  await pool.query(`ALTER TABLE desempenho_mensal_goleiros ADD COLUMN IF NOT EXISTS gols INTEGER NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE partidas_goleiros ADD COLUMN IF NOT EXISTS gols INTEGER NOT NULL DEFAULT 0`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_desempenho_goleiros_competencia ON desempenho_mensal_goleiros (competencia_id, pontos DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_partidas_goleiros_goleiro ON partidas_goleiros (goleiro_id, registrada_em DESC)`);
   const competencia = await currentCompetencia();
   await pool.query(`
-    INSERT INTO desempenho_mensal_goleiros (competencia_id, goleiro_id, pontos, vitorias, empates, defesas, infracoes)
-    SELECT $1, g.id, COALESCE(g.pontos,0), COALESCE(g.vitorias,0), COALESCE(g.empate,0), COALESCE(g.defesa,0), COALESCE(g.infracoes,0) FROM goleiros g
+    INSERT INTO desempenho_mensal_goleiros (competencia_id, goleiro_id, pontos, vitorias, empates, defesas, gols, infracoes)
+    SELECT $1, g.id, COALESCE(g.pontos,0), COALESCE(g.vitorias,0), COALESCE(g.empate,0), COALESCE(g.defesa,0), COALESCE(g.gols,0), COALESCE(g.infracoes,0) FROM goleiros g
     ON CONFLICT (competencia_id, goleiro_id) DO NOTHING
   `, [competencia.id]);
 }
@@ -314,7 +318,7 @@ app.get("/competencias/:id/goleiros", async (req, res) => {
     await goalkeeperReady;
     const result = await pool.query(`
       SELECT g.id,g.nome,g.foto,dm.pontos,dm.jogos_disputados,dm.vitorias,dm.empates,dm.derrotas,
-        dm.defesas,dm.gols_sofridos,dm.infracoes,c.chave AS competencia,
+        dm.defesas,dm.gols,dm.gols_sofridos,dm.infracoes,c.chave AS competencia,
         CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos
       FROM desempenho_mensal_goleiros dm JOIN goleiros g ON g.id=dm.goleiro_id JOIN competencias c ON c.id=dm.competencia_id
       WHERE c.id=$1 ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.defesas DESC,g.nome ASC
@@ -486,7 +490,7 @@ app.get("/goleiros", async (req,res)=>{
         COALESCE(dm.pontos,g.pontos,0)::int AS pontos,
         COALESCE(dm.vitorias,g.vitorias,0)::int AS vitorias,
         COALESCE(dm.empates,g.empate,0)::int AS empate,
-        COALESCE(g.gols,0)::int AS gols,
+        COALESCE(dm.gols,g.gols,0)::int AS gols,
         COALESCE(dm.defesas,g.defesa,0)::int AS defesa,
         COALESCE(dm.infracoes,g.infracoes,0)::int AS infracoes,
         COALESCE(dm.jogos_disputados,0)::int AS jogos_disputados,
@@ -514,7 +518,7 @@ app.get("/goleiros/ranking", async (req,res)=>{
     if (!competencia) return res.status(404).json({error:"Competência não encontrada"});
     const result = await pool.query(`
       SELECT ROW_NUMBER() OVER (ORDER BY dm.pontos DESC,dm.vitorias DESC,dm.defesas DESC,g.nome ASC)::int AS posicao,
-        g.id AS goleiro_id,g.nome,g.foto,dm.pontos,dm.jogos_disputados,dm.vitorias,dm.empates,dm.derrotas,dm.defesas,dm.gols_sofridos,
+        g.id AS goleiro_id,g.nome,g.foto,dm.pontos,dm.jogos_disputados,dm.vitorias,dm.empates,dm.derrotas,dm.defesas,dm.gols,dm.gols_sofridos,
         CASE WHEN dm.jogos_disputados=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos
       FROM desempenho_mensal_goleiros dm JOIN goleiros g ON g.id=dm.goleiro_id
       WHERE dm.competencia_id=$1 ORDER BY posicao LIMIT $2
@@ -525,7 +529,7 @@ app.get("/goleiros/ranking", async (req,res)=>{
 app.get("/goleiros/:id/partidas", async (req,res)=>{
   try {
     await goalkeeperReady;
-    const result = await pool.query(`SELECT p.id,p.operacao_id,p.resultado,p.defesas,p.gols_sofridos,p.infracoes,p.pontos,p.registrada_em,c.chave AS competencia FROM partidas_goleiros p JOIN competencias c ON c.id=p.competencia_id WHERE p.goleiro_id=$1 ORDER BY p.registrada_em DESC`, [req.params.id]);
+    const result = await pool.query(`SELECT p.id,p.operacao_id,p.resultado,p.defesas,p.gols,p.gols_sofridos,p.infracoes,p.pontos,p.registrada_em,c.chave AS competencia FROM partidas_goleiros p JOIN competencias c ON c.id=p.competencia_id WHERE p.goleiro_id=$1 ORDER BY p.registrada_em DESC`, [req.params.id]);
     res.json(result.rows);
   } catch(err) { console.error("Erro ao buscar partidas do goleiro:",err); res.status(500).json({error:"Erro ao buscar partidas do goleiro"}); }
 });
@@ -546,6 +550,7 @@ app.get("/goleiros/:id", async (req,res)=>{
         COALESCE(dm.empates,g.empate,0)::int AS empates,
         COALESCE(dm.derrotas,0)::int AS derrotas,
         COALESCE(dm.defesas,g.defesa,0)::int AS defesas,
+        COALESCE(dm.gols,g.gols,0)::int AS gols,
         COALESCE(dm.gols_sofridos,0)::int AS gols_sofridos,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND((dm.vitorias::numeric * 100) / dm.jogos_disputados, 2) END AS aproveitamento_vitorias,
@@ -564,7 +569,7 @@ app.post("/goleiros", async (req,res)=>{
     await goalkeeperReady;
     const result=await pool.query("INSERT INTO goleiros (nome,pontos,vitorias,empate,defesa,gols,infracoes,foto) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",[goleiro.nome,goleiro.pontos,goleiro.vitorias,goleiro.empate,goleiro.defesa,goleiro.gols,goleiro.infracoes,goleiro.foto]);
     const competencia=await currentCompetencia();
-    await pool.query("INSERT INTO desempenho_mensal_goleiros (competencia_id,goleiro_id,pontos,vitorias,empates,defesas,infracoes) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (competencia_id,goleiro_id) DO NOTHING",[competencia.id,result.rows[0].id,goleiro.pontos,goleiro.vitorias,goleiro.empate,goleiro.defesa,goleiro.infracoes]);
+    await pool.query("INSERT INTO desempenho_mensal_goleiros (competencia_id,goleiro_id,pontos,vitorias,empates,defesas,gols,infracoes) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (competencia_id,goleiro_id) DO NOTHING",[competencia.id,result.rows[0].id,goleiro.pontos,goleiro.vitorias,goleiro.empate,goleiro.defesa,goleiro.gols,goleiro.infracoes]);
     res.status(201).json(result.rows[0]);
   } catch(err) { console.error("Erro ao salvar goleiro:",err);res.status(500).json({error:"Erro ao salvar goleiro"}); }
 });
@@ -603,7 +608,7 @@ function validateRegistroPartida(data){
       if(ids.has(evento.goleiro_id))erros.push(`goleiros: goleiro_id duplicado (${evento.goleiro_id})`);
       ids.add(evento.goleiro_id);
       if(!["vitoria","empate","derrota"].includes(evento.resultado))erros.push(`goleiros[${evento.goleiro_id}].resultado deve ser vitoria, empate ou derrota`);
-      for(const campo of ["defesas","gols_sofridos","infracoes"]){if(evento[campo]!==undefined&&typeof evento[campo]!=="number")erros.push(`goleiros[${evento.goleiro_id}].${campo} deve ser number`);if(evento[campo]!==undefined&&evento[campo]<0)erros.push(`goleiros[${evento.goleiro_id}].${campo} não pode ser negativo`);}
+      for(const campo of ["defesas","gols","gols_sofridos","infracoes"]){if(evento[campo]!==undefined&&typeof evento[campo]!=="number")erros.push(`goleiros[${evento.goleiro_id}].${campo} deve ser number`);if(evento[campo]!==undefined&&evento[campo]<0)erros.push(`goleiros[${evento.goleiro_id}].${campo} não pode ser negativo`);}
     }
   }
   return erros;
@@ -647,13 +652,13 @@ app.post("/partida/registrar", async (req,res)=>{
         const id=Number(evento.goleiro_id);
         const atualResult=await client.query("SELECT * FROM desempenho_mensal_goleiros WHERE competencia_id=$1 AND goleiro_id=$2 FOR UPDATE",[competencia.id,id]);
         const atual=atualResult.rows[0]||{jogos_disputados:0,vitorias:0,empates:0,derrotas:0,defesas:0,gols_sofridos:0,infracoes:0};
-        const inc={jogos_disputados:1,vitorias:evento.resultado==="vitoria"?1:0,empates:evento.resultado==="empate"?1:0,derrotas:evento.resultado==="derrota"?1:0,defesas:Number(evento.defesas)||0,gols_sofridos:Number(evento.gols_sofridos)||0,infracoes:Number(evento.infracoes)||0};
-        const novos={jogos_disputados:Number(atual.jogos_disputados||0)+inc.jogos_disputados,vitorias:Number(atual.vitorias||0)+inc.vitorias,empates:Number(atual.empates||0)+inc.empates,derrotas:Number(atual.derrotas||0)+inc.derrotas,defesas:Number(atual.defesas||0)+inc.defesas,gols_sofridos:Number(atual.gols_sofridos||0)+inc.gols_sofridos,infracoes:Number(atual.infracoes||0)+inc.infracoes};
-        const pontos=calculatePoints(novos.vitorias,novos.empates,novos.defesas,0,novos.infracoes);
-        const atualizado=await client.query(`INSERT INTO desempenho_mensal_goleiros (competencia_id,goleiro_id,pontos,jogos_disputados,vitorias,empates,derrotas,defesas,gols_sofridos,infracoes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(competencia_id,goleiro_id) DO UPDATE SET pontos=$3,jogos_disputados=$4,vitorias=$5,empates=$6,derrotas=$7,defesas=$8,gols_sofridos=$9,infracoes=$10,atualizado_em=NOW() RETURNING *`,[competencia.id,id,pontos,novos.jogos_disputados,novos.vitorias,novos.empates,novos.derrotas,novos.defesas,novos.gols_sofridos,novos.infracoes]);
-        const eventoPontos=calculatePoints(inc.vitorias,inc.empates,inc.defesas,0,inc.infracoes);
-        await client.query(`UPDATE goleiros SET pontos=COALESCE(pontos,0)+$1,vitorias=COALESCE(vitorias,0)+$2,empate=COALESCE(empate,0)+$3,defesa=COALESCE(defesa,0)+$4,infracoes=COALESCE(infracoes,0)+$5 WHERE id=$6`,[eventoPontos,inc.vitorias,inc.empates,inc.defesas,inc.infracoes,id]);
-        await client.query(`INSERT INTO partidas_goleiros (operacao_id,competencia_id,goleiro_id,resultado,defesas,gols_sofridos,infracoes,pontos) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[operacao_id,competencia.id,id,evento.resultado,inc.defesas,inc.gols_sofridos,inc.infracoes,eventoPontos]);
+        const inc={jogos_disputados:1,vitorias:evento.resultado==="vitoria"?1:0,empates:evento.resultado==="empate"?1:0,derrotas:evento.resultado==="derrota"?1:0,defesas:Number(evento.defesas)||0,gols:Number(evento.gols)||0,gols_sofridos:Number(evento.gols_sofridos)||0,infracoes:Number(evento.infracoes)||0};
+        const novos={jogos_disputados:Number(atual.jogos_disputados||0)+inc.jogos_disputados,vitorias:Number(atual.vitorias||0)+inc.vitorias,empates:Number(atual.empates||0)+inc.empates,derrotas:Number(atual.derrotas||0)+inc.derrotas,defesas:Number(atual.defesas||0)+inc.defesas,gols:Number(atual.gols||0)+inc.gols,gols_sofridos:Number(atual.gols_sofridos||0)+inc.gols_sofridos,infracoes:Number(atual.infracoes||0)+inc.infracoes};
+        const pontos=calculatePoints(novos.vitorias,novos.empates,novos.defesas,novos.gols,novos.infracoes);
+        const atualizado=await client.query(`INSERT INTO desempenho_mensal_goleiros (competencia_id,goleiro_id,pontos,jogos_disputados,vitorias,empates,derrotas,defesas,gols,gols_sofridos,infracoes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(competencia_id,goleiro_id) DO UPDATE SET pontos=$3,jogos_disputados=$4,vitorias=$5,empates=$6,derrotas=$7,defesas=$8,gols=$9,gols_sofridos=$10,infracoes=$11,atualizado_em=NOW() RETURNING *`,[competencia.id,id,pontos,novos.jogos_disputados,novos.vitorias,novos.empates,novos.derrotas,novos.defesas,novos.gols,novos.gols_sofridos,novos.infracoes]);
+        const eventoPontos=calculatePoints(inc.vitorias,inc.empates,inc.defesas,inc.gols,inc.infracoes);
+        await client.query(`UPDATE goleiros SET pontos=COALESCE(pontos,0)+$1,vitorias=COALESCE(vitorias,0)+$2,empate=COALESCE(empate,0)+$3,defesa=COALESCE(defesa,0)+$4,gols=COALESCE(gols,0)+$5,infracoes=COALESCE(infracoes,0)+$6 WHERE id=$7`,[eventoPontos,inc.vitorias,inc.empates,inc.defesas,inc.gols,inc.infracoes,id]);
+        await client.query(`INSERT INTO partidas_goleiros (operacao_id,competencia_id,goleiro_id,resultado,defesas,gols,gols_sofridos,infracoes,pontos) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[operacao_id,competencia.id,id,evento.resultado,inc.defesas,inc.gols,inc.gols_sofridos,inc.infracoes,eventoPontos]);
         goleirosAtualizados.push(atualizado.rows[0]);
       }
     }
