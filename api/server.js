@@ -221,6 +221,20 @@ async function ensureGoalkeeperTables() {
   await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS foto TEXT`);
   await pool.query(`ALTER TABLE goleiros ADD COLUMN IF NOT EXISTS criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
 
+  // Avaliação técnica manual do goleiro: mesmos cinco eixos do radar do PWA.
+  // Mantida separada das estatísticas de partidas para não confundir defesa técnica com defesas realizadas.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS avaliacao_goleiros (
+      goleiro_id INTEGER PRIMARY KEY REFERENCES goleiros(id) ON DELETE CASCADE,
+      defesa NUMERIC(5,2) CHECK (defesa BETWEEN 0 AND 20),
+      ataque NUMERIC(5,2) CHECK (ataque BETWEEN 0 AND 20),
+      velocidade NUMERIC(5,2) CHECK (velocidade BETWEEN 0 AND 20),
+      habilidade NUMERIC(5,2) CHECK (habilidade BETWEEN 0 AND 20),
+      passe NUMERIC(5,2) CHECK (passe BETWEEN 0 AND 20),
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS desempenho_mensal_goleiros (
       id BIGSERIAL PRIMARY KEY,
@@ -591,15 +605,66 @@ app.get("/goleiros/:id", async (req,res)=>{
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND(dm.gols_sofridos::numeric / dm.jogos_disputados, 2) END AS media_gols_sofridos,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND((dm.vitorias::numeric * 100) / dm.jogos_disputados, 2) END AS aproveitamento_vitorias,
         CASE WHEN COALESCE(dm.jogos_disputados,0)=0 THEN 0 ELSE ROUND(dm.defesas::numeric / dm.jogos_disputados, 2) END AS media_defesas,
-        c.chave AS competencia
+        c.chave AS competencia,
+        ag.defesa AS avaliacao_defesa,ag.ataque AS avaliacao_ataque,
+        ag.velocidade AS avaliacao_velocidade,ag.habilidade AS avaliacao_habilidade,
+        ag.passe AS avaliacao_passe
       FROM goleiros g LEFT JOIN LATERAL (SELECT * FROM competencias WHERE status='aberta' ORDER BY id DESC LIMIT 1) c ON TRUE
       LEFT JOIN desempenho_mensal_goleiros dm ON dm.goleiro_id=g.id AND dm.competencia_id=c.id
+      LEFT JOIN avaliacao_goleiros ag ON ag.goleiro_id=g.id
       WHERE g.id=$1
     `,[req.params.id]);
     if(!result.rows.length)return res.status(404).json({error:"Goleiro não encontrado"});
-    res.json(result.rows[0]);
+    const goleiro = result.rows[0];
+    const possuiAvaliacao = [goleiro.avaliacao_defesa,goleiro.avaliacao_ataque,goleiro.avaliacao_velocidade,goleiro.avaliacao_habilidade,goleiro.avaliacao_passe].some(valor => valor !== null && valor !== undefined);
+    goleiro.avaliacao = possuiAvaliacao ? {
+      defesa: goleiro.avaliacao_defesa === null ? null : Number(goleiro.avaliacao_defesa),
+      ataque: goleiro.avaliacao_ataque === null ? null : Number(goleiro.avaliacao_ataque),
+      velocidade: goleiro.avaliacao_velocidade === null ? null : Number(goleiro.avaliacao_velocidade),
+      habilidade: goleiro.avaliacao_habilidade === null ? null : Number(goleiro.avaliacao_habilidade),
+      passe: goleiro.avaliacao_passe === null ? null : Number(goleiro.avaliacao_passe)
+    } : null;
+    delete goleiro.avaliacao_defesa;
+    delete goleiro.avaliacao_ataque;
+    delete goleiro.avaliacao_velocidade;
+    delete goleiro.avaliacao_habilidade;
+    delete goleiro.avaliacao_passe;
+    res.json(goleiro);
   } catch(err) { console.error("Erro ao buscar goleiro:",err);res.status(500).json({error:"Erro ao buscar goleiro"}); }
 });
+
+// Atualização manual da avaliação técnica (escala de 0 a 20), sem alterar estatísticas de partidas.
+app.put("/goleiros/:id/avaliacao", async (req,res)=>{
+  const goleiroId = Number(req.params.id);
+  if(!Number.isInteger(goleiroId) || goleiroId <= 0) return res.status(400).json({error:"ID do goleiro inválido"});
+  const dados = req.body?.avaliacao && typeof req.body.avaliacao === "object" ? req.body.avaliacao : req.body;
+  const campos = ["defesa","ataque","velocidade","habilidade","passe"];
+  const valores = {};
+  for(const campo of campos){
+    if(dados[campo] === undefined) continue;
+    const valor = Number(dados[campo]);
+    if(!Number.isFinite(valor) || valor < 0 || valor > 20) return res.status(400).json({error:`avaliacao.${campo} deve ser um número entre 0 e 20`});
+    valores[campo] = valor;
+  }
+  if(!Object.keys(valores).length) return res.status(400).json({error:"Informe ao menos um atributo da avaliação"});
+  try{
+    await goalkeeperReady;
+    const existe = await pool.query("SELECT id FROM goleiros WHERE id=$1",[goleiroId]);
+    if(!existe.rows.length) return res.status(404).json({error:"Goleiro não encontrado"});
+    const atual = await pool.query("SELECT * FROM avaliacao_goleiros WHERE goleiro_id=$1",[goleiroId]);
+    const anterior = atual.rows[0] || {};
+    const novo = Object.fromEntries(campos.map(campo => [campo, valores[campo] !== undefined ? valores[campo] : anterior[campo] ?? null]));
+    const salvo = await pool.query(`
+      INSERT INTO avaliacao_goleiros (goleiro_id,defesa,ataque,velocidade,habilidade,passe)
+      VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (goleiro_id) DO UPDATE SET defesa=$2,ataque=$3,velocidade=$4,habilidade=$5,passe=$6,atualizado_em=NOW()
+      RETURNING defesa,ataque,velocidade,habilidade,passe,atualizado_em
+    `,[goleiroId,novo.defesa,novo.ataque,novo.velocidade,novo.habilidade,novo.passe]);
+    const avaliacao = Object.fromEntries(campos.map(campo => [campo, salvo.rows[0][campo] === null ? null : Number(salvo.rows[0][campo])]));
+    res.json({success:true,goleiro_id:goleiroId,avaliacao,atualizado_em:salvo.rows[0].atualizado_em});
+  }catch(err){console.error("Erro ao salvar avaliação técnica do goleiro:",err);res.status(500).json({error:"Erro ao salvar avaliação técnica do goleiro"});}
+});
+
 app.post("/goleiros", async (req,res)=>{
   const goleiro=normalizePlayer(req.body);
   try {
