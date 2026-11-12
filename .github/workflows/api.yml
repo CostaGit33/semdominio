@@ -40,7 +40,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Validate JavaScript syntax
-        run: node --check server.js
+        run: |
+          node --check server.js
+          node --check auth_routes.js
 
       - name: Verify package metadata
         run: npm pkg get name version scripts dependencies
