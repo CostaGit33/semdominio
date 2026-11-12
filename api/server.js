@@ -7,6 +7,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const multer = require("multer");
 const { Pool } = require("pg");
+const { registerAuthRoutes } = require("./auth_routes");
 
 const app = express();
 
@@ -17,6 +18,8 @@ app.set("trust proxy", 1);
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
 });
+
+const authReady = registerAuthRoutes(app, pool);
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_PARTIDA = "atual";
@@ -811,7 +814,7 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`API FutPontos rodando na porta ${PORT}`);
-  Promise.all([monthlyReady, goalkeeperReady, ensureMontagemTable(), ensurePartidaOperacoesTable()])
+  Promise.all([monthlyReady, goalkeeperReady, authReady, ensureMontagemTable(), ensurePartidaOperacoesTable()])
     .then(() => console.log("Banco preparado com sucesso."))
     .catch((err) => console.error("Erro ao preparar banco de dados (API continua online):", err));
 });
