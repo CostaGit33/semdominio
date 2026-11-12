@@ -11,7 +11,7 @@ O nome esperado no `wrangler.toml` é `semdominio`. Se o bucket real tiver outro
 Na pasta `r2-worker`:
 
 ```bash
-npm install --save-dev wrangler
+npm install
 npx wrangler login
 npx wrangler secret put R2_SIGNING_SECRET
 npx wrangler secret put R2_INTERNAL_TOKEN
