@@ -87,6 +87,7 @@ function signPrivatePhoto(reference) {
 }
 
 function signPhotoFields(value) {
+  if (value instanceof Date) return value;
   if (Array.isArray(value)) return value.map(signPhotoFields);
   if (!value || typeof value !== "object") return value;
   const output = { ...value };
