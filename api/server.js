@@ -78,7 +78,7 @@ function photoKeyFromReference(reference) {
 
 function signPrivatePhoto(reference) {
   const key = photoKeyFromReference(reference);
-  if (!key || !r2IsConfigured()) return reference;
+  if (!key) return reference;\n  if (!r2IsConfigured()) return null;
   const exp = Math.floor(Date.now() / 1000) + R2_SIGNED_URL_TTL_SECONDS;
   const signature = crypto.createHmac("sha256", R2_SIGNING_SECRET)
     .update(`${key}:${exp}`).digest("hex");
@@ -469,7 +469,7 @@ app.post("/jogadores/:id/foto", uploadPlayerPhoto.single("foto"), async (req, re
         "UPDATE jogadores SET foto=$1 WHERE id=$2 RETURNING id,nome,foto",
         [reference, jogadorId]
       );
-      await deletePhotoFromR2(jogador.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior:", err.message));
+      if (jogador.rows[0].foto !== reference) {\n        await deletePhotoFromR2(jogador.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior:", err.message));\n      }
       return res.status(201).json({
         success: true, jogador_id: updated.rows[0].id,
         nome: updated.rows[0].nome, foto: updated.rows[0].foto
@@ -735,7 +735,7 @@ app.post("/goleiros/:id/foto", uploadGoalkeeperPhoto.single("foto"), async (req,
         "UPDATE goleiros SET foto=$1 WHERE id=$2 RETURNING id,nome,foto",
         [reference, goleiroId]
       );
-      await deletePhotoFromR2(goleiro.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior do goleiro:", err.message));
+      if (goleiro.rows[0].foto !== reference) {\n        await deletePhotoFromR2(goleiro.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior do goleiro:", err.message));\n      }
       return res.status(201).json({
         success: true, goleiro_id: updated.rows[0].id,
         nome: updated.rows[0].nome, foto: updated.rows[0].foto
