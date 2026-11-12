@@ -470,13 +470,15 @@ app.post("/jogadores/:id/foto", uploadPlayerPhoto.single("foto"), async (req, re
         "UPDATE jogadores SET foto=$1 WHERE id=$2 RETURNING id,nome,foto",
         [reference, jogadorId]
       );
-      if (jogador.rows[0].foto !== reference) {\n        await deletePhotoFromR2(jogador.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior:", err.message));\n      }
+      if (jogador.rows[0].foto !== reference) {
+        await deletePhotoFromR2(jogador.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior:", err.message));
+      }
       return res.status(201).json({
         success: true, jogador_id: updated.rows[0].id,
         nome: updated.rows[0].nome, foto: updated.rows[0].foto
       });
     } catch (dbError) {
-      await deletePhotoFromR2(reference).catch(() => {});
+      if (jogador.rows[0].foto !== reference) await deletePhotoFromR2(reference).catch(() => {});
       throw dbError;
     }
   } catch (err) {
@@ -736,13 +738,15 @@ app.post("/goleiros/:id/foto", uploadGoalkeeperPhoto.single("foto"), async (req,
         "UPDATE goleiros SET foto=$1 WHERE id=$2 RETURNING id,nome,foto",
         [reference, goleiroId]
       );
-      if (goleiro.rows[0].foto !== reference) {\n        await deletePhotoFromR2(goleiro.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior do goleiro:", err.message));\n      }
+      if (goleiro.rows[0].foto !== reference) {
+        await deletePhotoFromR2(goleiro.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior do goleiro:", err.message));
+      }
       return res.status(201).json({
         success: true, goleiro_id: updated.rows[0].id,
         nome: updated.rows[0].nome, foto: updated.rows[0].foto
       });
     } catch (dbError) {
-      await deletePhotoFromR2(reference).catch(() => {});
+      if (goleiro.rows[0].foto !== reference) await deletePhotoFromR2(reference).catch(() => {});
       throw dbError;
     }
   } catch (err) {
