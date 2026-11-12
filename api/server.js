@@ -15,6 +15,13 @@ app.use(cors());
 app.use(express.json());
 app.set("trust proxy", 1);
 
+// Converte referências r2:// em URLs assinadas sem alterar o contrato JSON existente.
+app.use((_req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => originalJson(signPhotoFields(body));
+  next();
+});
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
 });
@@ -33,63 +40,94 @@ const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 fs.mkdirSync(PLAYER_PHOTO_ROOT, { recursive: true });
 fs.mkdirSync(GOALKEEPER_PHOTO_ROOT, { recursive: true });
 
-const photoStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, PLAYER_PHOTO_ROOT),
-  filename: (req, file, cb) => {
-    const mime = String(file.mimetype || "").split(";", 1)[0].trim().toLowerCase();
-    const extensionByMime = {
-      "image/jpeg": ".jpg",
-      "image/png": ".png",
-      "image/webp": ".webp",
-      "image/gif": ".gif",
-      "application/octet-stream": ".jpg"
-    };
-    const extension = extensionByMime[mime] || (mime.startsWith("image/") ? ".jpg" : ".jpg");
-    const jogadorId = String(req.params.id).replace(/[^0-9]/g, "") || "jogador";
-    const suffix = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
-    cb(null, `${jogadorId}-${suffix}${extension}`);
-  }
-});
+const allowedPhotoTypes = new Map([
+  ["image/jpeg", ".jpg"], ["image/png", ".png"],
+  ["image/webp", ".webp"], ["image/gif", ".gif"]
+]);
 
-const uploadPlayerPhoto = multer({
-  storage: photoStorage,
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PHOTO_SIZE },
   fileFilter: (_req, file, cb) => {
-    // O Telegram/n8n pode entregar o arquivo com MIME ausente, parametrizado ou octet-stream.
     const mime = String(file.mimetype || "").split(";", 1)[0].trim().toLowerCase();
-    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/octet-stream", ""];
-    if (!allowed.includes(mime) && !mime.startsWith("image/")) {
+    if (!allowedPhotoTypes.has(mime)) {
       return cb(new Error("Formato de imagem não permitido. Use JPG, PNG, WEBP ou GIF."));
     }
     cb(null, true);
   }
 });
+const uploadPlayerPhoto = photoUpload;
+const uploadGoalkeeperPhoto = photoUpload;
 
-const goalkeeperPhotoStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, GOALKEEPER_PHOTO_ROOT),
-  filename: (req, file, cb) => {
-    const mime = String(file.mimetype || "").split(";", 1)[0].trim().toLowerCase();
-    const extension = {
-      "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"
-    }[mime] || ".jpg";
-    const goleiroId = String(req.params.id).replace(/[^0-9]/g, "") || "goleiro";
-    const suffix = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
-    cb(null, `${goleiroId}-${suffix}${extension}`);
-  }
-});
+const R2_WORKER_URL = String(process.env.R2_WORKER_URL || "").replace(/\\/+$/, "");
+const R2_SIGNING_SECRET = process.env.R2_SIGNING_SECRET || "";
+const R2_INTERNAL_TOKEN = process.env.R2_INTERNAL_TOKEN || "";
+const R2_SIGNED_URL_TTL_SECONDS = Math.min(
+  Math.max(Number(process.env.R2_SIGNED_URL_TTL_SECONDS) || 900, 60), 3600
+);
 
-const uploadGoalkeeperPhoto = multer({
-  storage: goalkeeperPhotoStorage,
-  limits: { fileSize: MAX_PHOTO_SIZE },
-  fileFilter: (_req, file, cb) => {
-    const mime = String(file.mimetype || "").split(";", 1)[0].trim().toLowerCase();
-    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/octet-stream", ""];
-    if (!allowed.includes(mime) && !mime.startsWith("image/")) {
-      return cb(new Error("Formato de imagem não permitido. Use JPG, PNG, WEBP ou GIF."));
-    }
-    cb(null, true);
+function r2IsConfigured() {
+  return Boolean(R2_WORKER_URL && R2_SIGNING_SECRET && R2_INTERNAL_TOKEN);
+}
+
+function photoKeyFromReference(reference) {
+  if (typeof reference !== "string" || !reference.startsWith("r2://")) return null;
+  const key = reference.slice(5);
+  return /^(jogadores|goleiros)\\/[1-9][0-9]*\\.(jpg|png|webp|gif)$/.test(key) ? key : null;
+}
+
+function signPrivatePhoto(reference) {
+  const key = photoKeyFromReference(reference);
+  if (!key || !r2IsConfigured()) return reference;
+  const exp = Math.floor(Date.now() / 1000) + R2_SIGNED_URL_TTL_SECONDS;
+  const signature = crypto.createHmac("sha256", R2_SIGNING_SECRET)
+    .update(`${key}:${exp}`).digest("hex");
+  return `${R2_WORKER_URL}/private/${key.split("/").map(encodeURIComponent).join("/")}?exp=${exp}&sig=${signature}`;
+}
+
+function signPhotoFields(value) {
+  if (Array.isArray(value)) return value.map(signPhotoFields);
+  if (!value || typeof value !== "object") return value;
+  const output = { ...value };
+  if (typeof output.foto === "string") output.foto = signPrivatePhoto(output.foto);
+  for (const [key, child] of Object.entries(output)) {
+    if (child && typeof child === "object") output[key] = signPhotoFields(child);
   }
-});
+  return output;
+}
+
+async function sendPhotoToR2(key, file) {
+  if (!r2IsConfigured()) {
+    const error = new Error("Armazenamento privado de imagens não configurado na API.");
+    error.status = 503;
+    throw error;
+  }
+  const response = await fetch(`${R2_WORKER_URL}/internal/objects?key=${encodeURIComponent(key)}`, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${R2_INTERNAL_TOKEN}`,
+      "Content-Type": file.mimetype,
+      "Cache-Control": "private, max-age=0"
+    },
+    body: file.buffer
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Falha ao enviar imagem ao R2 (HTTP ${response.status}): ${detail.slice(0, 300)}`);
+  }
+}
+
+async function deletePhotoFromR2(reference) {
+  const key = photoKeyFromReference(reference);
+  if (!key || !r2IsConfigured()) return;
+  const response = await fetch(`${R2_WORKER_URL}/internal/objects?key=${encodeURIComponent(key)}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${R2_INTERNAL_TOKEN}` }
+  });
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Falha ao remover imagem antiga do R2 (HTTP ${response.status})`);
+  }
+}
 
 function calculatePoints(vitorias = 0, empate = 0, defesa = 0, gols = 0, infracoes = 0) {
   return (Number(vitorias) * 3) + (Number(empate) * 1) + (Number(defesa) * 1) + (Number(gols) * 2) - (Number(infracoes) * 2);
@@ -416,51 +454,33 @@ app.put("/jogadores/:id", async (req, res) => {
 app.post("/jogadores/:id/foto", uploadPlayerPhoto.single("foto"), async (req, res) => {
   const jogadorId = Number(req.params.id);
   if (!Number.isInteger(jogadorId) || jogadorId <= 0) {
-    if (req.file?.path) fs.rmSync(req.file.path, { force: true });
     return res.status(400).json({ success: false, error: "ID do jogador inválido" });
   }
-  if (!req.file) {
-    return res.status(400).json({ success: false, error: "Envie uma imagem no campo multipart 'foto'" });
-  }
-
+  if (!req.file) return res.status(400).json({ success: false, error: "Envie uma imagem no campo multipart 'foto'" });
   try {
-    const jogador = await pool.query("SELECT id, foto FROM jogadores WHERE id = $1", [jogadorId]);
-    if (!jogador.rows.length) {
-      fs.rmSync(req.file.path, { force: true });
-      return res.status(404).json({ success: false, error: "Jogador não encontrado" });
+    const jogador = await pool.query("SELECT id, foto FROM jogadores WHERE id=$1", [jogadorId]);
+    if (!jogador.rows.length) return res.status(404).json({ success: false, error: "Jogador não encontrado" });
+    const extension = allowedPhotoTypes.get(req.file.mimetype);
+    const key = `jogadores/${jogadorId}${extension}`;
+    await sendPhotoToR2(key, req.file);
+    const reference = `r2://${key}`;
+    try {
+      const updated = await pool.query(
+        "UPDATE jogadores SET foto=$1 WHERE id=$2 RETURNING id,nome,foto",
+        [reference, jogadorId]
+      );
+      await deletePhotoFromR2(jogador.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior:", err.message));
+      return res.status(201).json({
+        success: true, jogador_id: updated.rows[0].id,
+        nome: updated.rows[0].nome, foto: updated.rows[0].foto
+      });
+    } catch (dbError) {
+      await deletePhotoFromR2(reference).catch(() => {});
+      throw dbError;
     }
-
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
-    const fotoUrl = `${baseUrl}/uploads/jogadores/${encodeURIComponent(req.file.filename)}`;
-    const atualizada = await pool.query(
-      "UPDATE jogadores SET foto = $1 WHERE id = $2 RETURNING id, nome, foto",
-      [fotoUrl, jogadorId]
-    );
-
-    const fotoAnterior = jogador.rows[0].foto;
-    if (fotoAnterior) {
-      try {
-        const caminhoAnterior = new URL(fotoAnterior, baseUrl).pathname;
-        const prefixo = "/uploads/jogadores/";
-        if (caminhoAnterior.startsWith(prefixo)) {
-          const nomeAnterior = path.basename(caminhoAnterior);
-          fs.rmSync(path.join(PLAYER_PHOTO_ROOT, nomeAnterior), { force: true });
-        }
-      } catch (cleanupError) {
-        console.warn("Não foi possível remover a foto anterior:", cleanupError.message);
-      }
-    }
-
-    return res.status(201).json({
-      success: true,
-      jogador_id: atualizada.rows[0].id,
-      nome: atualizada.rows[0].nome,
-      foto: atualizada.rows[0].foto
-    });
   } catch (err) {
-    fs.rmSync(req.file.path, { force: true });
     console.error("Erro ao atualizar foto do jogador:", err);
-    return res.status(500).json({ success: false, error: "Erro ao salvar foto do jogador" });
+    return res.status(err.status || 500).json({ success: false, error: err.message || "Erro ao salvar foto do jogador" });
   }
 });
 
@@ -696,20 +716,38 @@ app.put("/goleiros/:id", async (req,res)=>{
   }catch(err){await client.query("ROLLBACK").catch(()=>{});console.error("Erro ao atualizar goleiro:",err);res.status(500).json({error:"Erro ao atualizar goleiro"});}
   finally{client.release();}
 });
-app.post("/goleiros/:id/foto", uploadGoalkeeperPhoto.single("foto"), async (req,res)=>{
-  const goleiroId=Number(req.params.id);
-  if(!Number.isInteger(goleiroId)||goleiroId<=0){if(req.file?.path)fs.rmSync(req.file.path,{force:true});return res.status(400).json({success:false,error:"ID do goleiro inválido"});}
-  if(!req.file)return res.status(400).json({success:false,error:"Envie uma imagem no campo multipart 'foto'"});
-  try{
-    const goleiro=await pool.query("SELECT id,nome,foto FROM goleiros WHERE id=$1",[goleiroId]);
-    if(!goleiro.rows.length){fs.rmSync(req.file.path,{force:true});return res.status(404).json({success:false,error:"Goleiro não encontrado"});}
-    const baseUrl=`${req.protocol}://${req.get("host")}`;
-    const fotoUrl=`${baseUrl}/uploads/goleiros/${encodeURIComponent(req.file.filename)}`;
-    const atualizada=await pool.query("UPDATE goleiros SET foto=$1 WHERE id=$2 RETURNING id,nome,foto",[fotoUrl,goleiroId]);
-    const fotoAnterior=goleiro.rows[0].foto;
-    if(fotoAnterior){try{const pathname=new URL(fotoAnterior,baseUrl).pathname;const prefixo="/uploads/goleiros/";if(pathname.startsWith(prefixo))fs.rmSync(path.join(GOALKEEPER_PHOTO_ROOT,path.basename(pathname)),{force:true});}catch(cleanupError){console.warn("Não foi possível remover a foto anterior do goleiro:",cleanupError.message);}}
-    return res.status(201).json({success:true,goleiro_id:atualizada.rows[0].id,nome:atualizada.rows[0].nome,foto:atualizada.rows[0].foto});
-  }catch(err){fs.rmSync(req.file.path,{force:true});console.error("Erro ao atualizar foto do goleiro:",err);return res.status(500).json({success:false,error:"Erro ao salvar foto do goleiro"});}
+app.post("/goleiros/:id/foto", uploadGoalkeeperPhoto.single("foto"), async (req, res) => {
+  const goleiroId = Number(req.params.id);
+  if (!Number.isInteger(goleiroId) || goleiroId <= 0) {
+    return res.status(400).json({ success: false, error: "ID do goleiro inválido" });
+  }
+  if (!req.file) return res.status(400).json({ success: false, error: "Envie uma imagem no campo multipart 'foto'" });
+  try {
+    await goalkeeperReady;
+    const goleiro = await pool.query("SELECT id,nome,foto FROM goleiros WHERE id=$1", [goleiroId]);
+    if (!goleiro.rows.length) return res.status(404).json({ success: false, error: "Goleiro não encontrado" });
+    const extension = allowedPhotoTypes.get(req.file.mimetype);
+    const key = `goleiros/${goleiroId}${extension}`;
+    await sendPhotoToR2(key, req.file);
+    const reference = `r2://${key}`;
+    try {
+      const updated = await pool.query(
+        "UPDATE goleiros SET foto=$1 WHERE id=$2 RETURNING id,nome,foto",
+        [reference, goleiroId]
+      );
+      await deletePhotoFromR2(goleiro.rows[0].foto).catch((err) => console.warn("Falha ao limpar foto anterior do goleiro:", err.message));
+      return res.status(201).json({
+        success: true, goleiro_id: updated.rows[0].id,
+        nome: updated.rows[0].nome, foto: updated.rows[0].foto
+      });
+    } catch (dbError) {
+      await deletePhotoFromR2(reference).catch(() => {});
+      throw dbError;
+    }
+  } catch (err) {
+    console.error("Erro ao atualizar foto do goleiro:", err);
+    return res.status(err.status || 500).json({ success: false, error: err.message || "Erro ao salvar foto do goleiro" });
+  }
 });
 app.delete("/goleiros/:id", async (req,res)=>{try{const result=await pool.query("DELETE FROM goleiros WHERE id=$1 RETURNING *",[req.params.id]);if(!result.rows.length)return res.status(404).json({error:"Goleiro não encontrado"});res.json({success:true});}catch(err){console.error("Erro ao excluir goleiro:",err);res.status(500).json({error:"Erro ao excluir goleiro"});}});
 
