@@ -78,7 +78,8 @@ function photoKeyFromReference(reference) {
 
 function signPrivatePhoto(reference) {
   const key = photoKeyFromReference(reference);
-  if (!key) return reference;\n  if (!r2IsConfigured()) return null;
+  if (!key) return reference;
+  if (!r2IsConfigured()) return null;
   const exp = Math.floor(Date.now() / 1000) + R2_SIGNED_URL_TTL_SECONDS;
   const signature = crypto.createHmac("sha256", R2_SIGNING_SECRET)
     .update(`${key}:${exp}`).digest("hex");
