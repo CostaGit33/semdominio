@@ -332,7 +332,7 @@ app.get("/", (req, res) => res.json({ status: "online", message: "API FutPontos 
 app.get("/health", async (req, res) => {
   try {
     await pool.query("SELECT 1");
-    res.json({ status: "ok", api: "online", database: "online" });
+    res.json({ status: "ok", api: "online", database: "online", private_images: r2IsConfigured() ? "configured" : "not_configured" });
   } catch (err) {
     console.error("Health check DB:", err.message);
     res.status(503).json({ status: "degraded", api: "online", database: "offline" });
@@ -491,6 +491,7 @@ app.delete("/jogadores/:id", async (req, res) => {
   try {
     const result = await pool.query("DELETE FROM jogadores WHERE id=$1 RETURNING *", [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: "Jogador não encontrado" });
+    await deletePhotoFromR2(result.rows[0].foto).catch((cleanupError) => console.warn("Falha ao remover foto do R2 após excluir jogador:", cleanupError.message));
     res.json({ success: true });
   } catch (err) { console.error("Erro ao excluir jogador:", err); res.status(500).json({ error: "Erro ao excluir jogador" }); }
 });
@@ -754,7 +755,7 @@ app.post("/goleiros/:id/foto", uploadGoalkeeperPhoto.single("foto"), async (req,
     return res.status(err.status || 500).json({ success: false, error: err.message || "Erro ao salvar foto do goleiro" });
   }
 });
-app.delete("/goleiros/:id", async (req,res)=>{try{const result=await pool.query("DELETE FROM goleiros WHERE id=$1 RETURNING *",[req.params.id]);if(!result.rows.length)return res.status(404).json({error:"Goleiro não encontrado"});res.json({success:true});}catch(err){console.error("Erro ao excluir goleiro:",err);res.status(500).json({error:"Erro ao excluir goleiro"});}});
+app.delete("/goleiros/:id", async (req,res)=>{try{const result=await pool.query("DELETE FROM goleiros WHERE id=$1 RETURNING *",[req.params.id]);if(!result.rows.length)return res.status(404).json({error:"Goleiro não encontrado"});await deletePhotoFromR2(result.rows[0].foto).catch((cleanupError)=>console.warn("Falha ao remover foto do R2 após excluir goleiro:",cleanupError.message));res.json({success:true});}catch(err){console.error("Erro ao excluir goleiro:",err);res.status(500).json({error:"Erro ao excluir goleiro"});}});
 
 function validateRegistroPartida(data){
   const erros=[];
