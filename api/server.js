@@ -59,7 +59,7 @@ const photoUpload = multer({
 const uploadPlayerPhoto = photoUpload;
 const uploadGoalkeeperPhoto = photoUpload;
 
-const R2_WORKER_URL = String(process.env.R2_WORKER_URL || "").replace(/\\/+$/, "");
+const R2_WORKER_URL = String(process.env.R2_WORKER_URL || "").replace(new RegExp("/+$"), "");
 const R2_SIGNING_SECRET = process.env.R2_SIGNING_SECRET || "";
 const R2_INTERNAL_TOKEN = process.env.R2_INTERNAL_TOKEN || "";
 const R2_SIGNED_URL_TTL_SECONDS = Math.min(
@@ -73,7 +73,7 @@ function r2IsConfigured() {
 function photoKeyFromReference(reference) {
   if (typeof reference !== "string" || !reference.startsWith("r2://")) return null;
   const key = reference.slice(5);
-  return /^(jogadores|goleiros)\\/[1-9][0-9]*\\.(jpg|png|webp|gif)$/.test(key) ? key : null;
+  return /^(jogadores|goleiros)[/][1-9][0-9]*[.](jpg|png|webp|gif)$/.test(key) ? key : null;
 }
 
 function signPrivatePhoto(reference) {
