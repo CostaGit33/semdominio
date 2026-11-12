@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'api/**'
+      - 'r2-worker/**'
       - '.github/workflows/api.yml'
   pull_request:
     branches: [main]
@@ -43,6 +44,7 @@ jobs:
         run: |
           node --check server.js
           node --check auth_routes.js
+          node --input-type=module --check < ../r2-worker/src/index.js
 
       - name: Verify package metadata
         run: npm pkg get name version scripts dependencies
