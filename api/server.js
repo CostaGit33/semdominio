@@ -7,7 +7,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const multer = require("multer");
 const { Pool } = require("pg");
-const { registerAuthRoutes } = require("./auth_routes");
+const { registerAuthRoutes, createRequireAdmin } = require("./auth_routes");
 
 const app = express();
 
@@ -28,6 +28,7 @@ const pool = new Pool({
 
 
 const authReady = registerAuthRoutes(app, pool);
+const requireAdmin = createRequireAdmin(pool);
 
 // Upload de foto exige sessão válida e vínculo esportivo aprovado.
 // A autorização é validada no servidor; o ID enviado pelo app nunca é suficiente.
@@ -47,13 +48,12 @@ function requireApprovedProfilePhoto(profileType) {
         SELECT u.id
         FROM app_sessions s
         JOIN app_users u ON u.id = s.user_id
-        JOIN app_profile_link_requests l ON l.user_id = u.id
+        LEFT JOIN app_profile_link_requests l
+          ON l.user_id = u.id AND l.profile_type = $2 AND l.profile_id = $3 AND l.status = 'approved'
         WHERE s.token_hash = $1
           AND s.expires_at > NOW()
           AND u.status = 'active'
-          AND l.profile_type = $2
-          AND l.profile_id = $3
-          AND l.status = 'approved'
+          AND (u.role = 'admin' OR l.id IS NOT NULL)
         LIMIT 1
       `, [tokenHash, profileType, profileId]);
       if (!access.rows.length) {
@@ -457,7 +457,7 @@ app.get("/competencias/:id/goleiros", async (req, res) => {
   } catch (err) { console.error("Erro ao consultar histórico de goleiros:", err); res.status(500).json({ error: "Erro ao consultar histórico de goleiros" }); }
 });
 
-app.post("/competencias/fechar", async (req, res) => {
+app.post("/competencias/fechar", requireAdmin, async (req, res) => {
   if (req.body?.confirm !== true) return res.status(400).json({ error: "Confirmação obrigatória", required: "confirm=true" });
   const client = await pool.connect();
   try {
@@ -478,7 +478,7 @@ app.post("/competencias/fechar", async (req, res) => {
   finally { client.release(); }
 });
 
-app.post("/jogadores", async (req, res) => {
+app.post("/jogadores", requireAdmin, async (req, res) => {
   const jogador = normalizePlayer(req.body);
   try {
     const result = await pool.query(`INSERT INTO jogadores (nome, pontos, vitorias, empate, defesa, gols, infracoes, foto) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [jogador.nome, jogador.pontos, jogador.vitorias, jogador.empate, jogador.defesa, jogador.gols, jogador.infracoes, jogador.foto]);
@@ -489,7 +489,7 @@ app.post("/jogadores", async (req, res) => {
   } catch (err) { console.error("Erro ao salvar jogador:", err); res.status(500).json({ error: "Erro ao salvar jogador" }); }
 });
 
-app.put("/jogadores/:id", async (req, res) => {
+app.put("/jogadores/:id", requireAdmin, async (req, res) => {
   const jogador = normalizePlayer(req.body);
   try {
     const result = await pool.query(`UPDATE jogadores SET nome=$1,foto=$2 WHERE id=$3 RETURNING *`, [jogador.nome, jogador.foto, req.params.id]);
@@ -537,7 +537,7 @@ app.post("/jogadores/:id/foto", requireApprovedProfilePhoto("jogador"), uploadPl
   }
 });
 
-app.delete("/jogadores/:id", async (req, res) => {
+app.delete("/jogadores/:id", requireAdmin, async (req, res) => {
   try {
     const result = await pool.query("DELETE FROM jogadores WHERE id=$1 RETURNING *", [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: "Jogador não encontrado" });
@@ -711,7 +711,7 @@ app.get("/goleiros/:id", async (req,res)=>{
 });
 
 // Atualização manual da avaliação técnica (escala de 0 a 20), sem alterar estatísticas de partidas.
-app.put("/goleiros/:id/avaliacao", async (req,res)=>{
+app.put("/goleiros/:id/avaliacao", requireAdmin, async (req,res)=>{
   const goleiroId = Number(req.params.id);
   if(!Number.isInteger(goleiroId) || goleiroId <= 0) return res.status(400).json({error:"ID do goleiro inválido"});
   const dados = req.body?.avaliacao && typeof req.body.avaliacao === "object" ? req.body.avaliacao : req.body;
@@ -742,7 +742,7 @@ app.put("/goleiros/:id/avaliacao", async (req,res)=>{
   }catch(err){console.error("Erro ao salvar avaliação técnica do goleiro:",err);res.status(500).json({error:"Erro ao salvar avaliação técnica do goleiro"});}
 });
 
-app.post("/goleiros", async (req,res)=>{
+app.post("/goleiros", requireAdmin, async (req,res)=>{
   const goleiro=normalizePlayer(req.body);
   try {
     await goalkeeperReady;
@@ -752,7 +752,7 @@ app.post("/goleiros", async (req,res)=>{
     res.status(201).json(result.rows[0]);
   } catch(err) { console.error("Erro ao salvar goleiro:",err);res.status(500).json({error:"Erro ao salvar goleiro"}); }
 });
-app.put("/goleiros/:id", async (req,res)=>{
+app.put("/goleiros/:id", requireAdmin, async (req,res)=>{
   const goleiro=normalizePlayer(req.body);
   const client=await pool.connect();
   try{
@@ -806,7 +806,7 @@ app.post("/goleiros/:id/foto", requireApprovedProfilePhoto("goleiro"), uploadGoa
     return res.status(err.status || 500).json({ success: false, error: err.message || "Erro ao salvar foto do goleiro" });
   }
 });
-app.delete("/goleiros/:id", async (req,res)=>{try{const result=await pool.query("DELETE FROM goleiros WHERE id=$1 RETURNING *",[req.params.id]);if(!result.rows.length)return res.status(404).json({error:"Goleiro não encontrado"});await deletePhotoFromR2(result.rows[0].foto).catch((cleanupError)=>console.warn("Falha ao remover foto do R2 após excluir goleiro:",cleanupError.message));res.json({success:true});}catch(err){console.error("Erro ao excluir goleiro:",err);res.status(500).json({error:"Erro ao excluir goleiro"});}});
+app.delete("/goleiros/:id", requireAdmin, async (req,res)=>{try{const result=await pool.query("DELETE FROM goleiros WHERE id=$1 RETURNING *",[req.params.id]);if(!result.rows.length)return res.status(404).json({error:"Goleiro não encontrado"});await deletePhotoFromR2(result.rows[0].foto).catch((cleanupError)=>console.warn("Falha ao remover foto do R2 após excluir goleiro:",cleanupError.message));res.json({success:true});}catch(err){console.error("Erro ao excluir goleiro:",err);res.status(500).json({error:"Erro ao excluir goleiro"});}});
 
 function validateRegistroPartida(data){
   const erros=[];
