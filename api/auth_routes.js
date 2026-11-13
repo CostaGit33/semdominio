@@ -58,6 +58,16 @@ async function ensureAuthTables(pool) {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_app_admin_audit_created ON app_admin_audit(created_at DESC)`);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_auth_audit (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
+      event VARCHAR(80) NOT NULL,
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_app_auth_audit_created ON app_auth_audit(created_at DESC)`);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS app_sessions (
       id BIGSERIAL PRIMARY KEY,
       user_id BIGINT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
