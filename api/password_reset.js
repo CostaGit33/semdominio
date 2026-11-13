@@ -54,7 +54,7 @@ function registerPasswordResetRoutes(app, pool, ready, hashPassword) {
     try {
       await ready;
       const email = normalizeEmail(req.body?.email);
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 254) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
         return res.status(400).json({ error: "Informe um e-mail válido." });
       }
 
@@ -114,10 +114,10 @@ function registerPasswordResetRoutes(app, pool, ready, hashPassword) {
     const code = String(req.body?.codigo || "").trim();
     const newPassword = String(req.body?.nova_senha || "");
 
-    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 254) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
       return res.status(400).json({ error: "Informe um e-mail válido." });
     }
-    if (!/^\\d{6}$/.test(code)) {
+    if (!/^\d{6}$/.test(code)) {
       return res.status(400).json({ error: "O código deve conter 6 números." });
     }
     if (newPassword.length < 10 || newPassword.length > 128) {
