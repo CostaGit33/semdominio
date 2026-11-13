@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - 'api/**'
+      - 'r2-worker/**'
       - '.github/workflows/api.yml'
   workflow_dispatch:
 
