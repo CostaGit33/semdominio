@@ -12,6 +12,14 @@ A autenticação é destinada ao aplicativo Flutter. O PWA e o painel administra
 - `POST /auth/login`
   - Body: `{ "email": "...", "senha": "..." }`
   - Retorna token opaco e validade de 30 dias.
+- `POST /auth/password-reset/request`
+  - Body: `{ "email": "..." }`.
+  - Resposta genérica para não revelar se o e-mail está cadastrado.
+  - Envia um código de 6 dígitos por e-mail, válido por 15 minutos. Há intervalo mínimo de 60 segundos entre solicitações para o mesmo endereço.
+- `POST /auth/password-reset/confirm`
+  - Body: `{ "email": "...", "codigo": "123456", "nova_senha": "..." }`.
+  - A nova senha deve ter entre 10 e 128 caracteres. O código é de uso único e permite no máximo 5 tentativas.
+  - Após a redefinição, todas as sessões existentes são revogadas e a operação é registrada no histórico.
 - `GET /auth/me`
   - Requer `Authorization: Bearer <token>`.
   - Retorna a conta e os pedidos de vínculo.
@@ -36,7 +44,7 @@ O status inicial é sempre `pending`. Não existe rota pública para aprovar ví
 
 - Implantar a nova versão da API antes de liberar o cadastro no APK.
 - Verificar a migração automática das três tabelas no PostgreSQL.
-- Antes de uso amplo, implementar verificação de e-mail, recuperação de senha, rate limit persistente para login/cadastro e gestão administrativa dos vínculos.
+- A recuperação de senha depende das variáveis `RESEND_API_KEY` e `RESEND_FROM` no ambiente da API. `RESEND_FROM` deve ser um remetente verificado no Resend, por exemplo `FutPontos <no-reply@seudominio>`. Se o envio falhar, o código é invalidado e o servidor registra o erro sem expor a existência da conta na resposta pública.
 - As rotas legadas de escrita continuam com o comportamento atual; esta implementação não as protege globalmente para evitar quebra de integrações/PWA. Não interpretar a tela de login como autorização completa da API.
 
 ## Alteração de foto de perfil
