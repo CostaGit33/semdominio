@@ -36,7 +36,7 @@ function requireApprovedProfilePhoto(profileType) {
     try {
       await authReady;
       const header = String(req.headers.authorization || "");
-      const match = header.match(/^Bearer\\s+([A-Za-z0-9_-]{40,})$/i);
+      const match = header.match(/^Bearer\s+([A-Za-z0-9_-]{40,})$/i);
       if (!match) return res.status(401).json({ success: false, error: "Faça login para alterar a foto." });
       const tokenHash = crypto.createHash("sha256").update(match[1]).digest("hex");
       const profileId = Number(req.params.id);
