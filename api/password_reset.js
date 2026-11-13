@@ -167,7 +167,7 @@ function registerPasswordResetRoutes(app, pool, ready, hashPassword) {
       );
       await client.query("DELETE FROM app_sessions WHERE user_id=$1", [reset.user_id]);
       await client.query(
-        "INSERT INTO app_admin_audit(actor_user_id,action,target_type,target_id,details) VALUES($1,'password.reset.completed','user',$1,$2::jsonb)",
+        "INSERT INTO app_admin_audit(actor_user_id,action,target_type,target_id,details) VALUES($1,'password.reset.completed','user',$1::text,$2::jsonb)",
         [reset.user_id, JSON.stringify({ source: "email_code" })]
       );
       await client.query("COMMIT");
