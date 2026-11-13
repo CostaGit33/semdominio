@@ -3,25 +3,25 @@
 ## Acesso inicial
 
 1. Cadastre sua conta pelo aplicativo.
-2. No console do serviço da API, dentro da pasta \`api\`, execute:
+2. No console do serviço da API, dentro da pasta `api`, execute:
 
-\`\`\`bash
+```bash
 node scripts/admin.js promover SEU_EMAIL
-\`\`\`
+```
 
 Para listar administradores:
 
-\`\`\`bash
+```bash
 node scripts/admin.js listar
-\`\`\`
+```
 
 Para remover o papel administrativo:
 
-\`\`\`bash
+```bash
 node scripts/admin.js rebaixar EMAIL
-\`\`\`
+```
 
-A API cria o campo de papel automaticamente. O papel padrão é \`user\`; somente \`admin\` acessa as rotas \`/admin/*\` e executa operações administrativas protegidas. Depois de promover uma conta, encerre a sessão e entre novamente.
+A API cria o campo de papel automaticamente. O papel padrão é `user`; somente `admin` acessa as rotas `/admin/*` e executa operações administrativas protegidas. Depois de promover uma conta, encerre a sessão e entre novamente.
 
 ## Painel no aplicativo
 
@@ -40,5 +40,5 @@ A administração usa a mesma conta e o mesmo token de autenticação do FutPont
 - A conta não pode alterar o próprio papel nem bloquear a si mesma.
 - O último administrador ativo não pode ser removido pelo painel ou pelo script.
 - Bloquear uma conta revoga as sessões existentes.
-- Alterações administrativas ficam registradas em \`app_admin_audit\`.
+- Alterações administrativas ficam registradas em `app_admin_audit`.
 - Cadastro público nunca concede papel administrativo.
