@@ -30,12 +30,31 @@ const pool = new Pool({
 const authReady = registerAuthRoutes(app, pool);
 const requireAdmin = createRequireAdmin(pool, authReady);
 
+// Upload automatizado pelo Telegram: token de serviço + allowlist de IDs
+// de chats autorizados. Ambos são configurados somente como secrets/env no servidor.
+function isTelegramPhotoServiceAuthorized(req) {
+  const expected = String(process.env.TELEGRAM_PHOTO_UPLOAD_TOKEN || "");
+  const supplied = String(req.headers.authorization || "").replace(/^Bearer\\s+/i, "");
+  const chatId = String(req.headers["x-telegram-chat-id"] || "").trim();
+  const allowed = String(process.env.TELEGRAM_PHOTO_ALLOWED_CHAT_IDS || "")
+    .split(",").map((value) => value.trim()).filter(Boolean);
+  if (!expected || !supplied || !chatId || !allowed.includes(chatId)) return false;
+  const expectedBytes = Buffer.from(expected);
+  const suppliedBytes = Buffer.from(supplied);
+  return expectedBytes.length === suppliedBytes.length &&
+    crypto.timingSafeEqual(expectedBytes, suppliedBytes);
+}
+
 // Upload de foto exige sessão válida e vínculo esportivo aprovado.
-// A autorização é validada no servidor; o ID enviado pelo app nunca é suficiente.
+// O bot usa credencial de serviço restrita a chats explicitamente autorizados.
 function requireApprovedProfilePhoto(profileType) {
   return async (req, res, next) => {
     try {
       await authReady;
+      if (isTelegramPhotoServiceAuthorized(req)) {
+        req.authSource = "telegram-photo-service";
+        return next();
+      }
       const header = String(req.headers.authorization || "");
       const match = header.match(/^Bearer\s+([A-Za-z0-9_-]{40,})$/i);
       if (!match) return res.status(401).json({ success: false, error: "Faça login para alterar a foto." });
