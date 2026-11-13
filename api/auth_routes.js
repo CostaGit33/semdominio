@@ -305,13 +305,13 @@ function registerAuthRoutes(app, pool) {
   app.get("/admin/overview", requireAdmin, async (req, res) => {
     try {
       const [counts, current, admins] = await Promise.all([
-        pool.query(\`SELECT
+        pool.query(`SELECT
           (SELECT COUNT(*)::int FROM app_users) AS usuarios,
           (SELECT COUNT(*)::int FROM app_users WHERE status='active') AS usuarios_ativos,
           (SELECT COUNT(*)::int FROM jogadores) AS jogadores,
           (SELECT COUNT(*)::int FROM goleiros) AS goleiros,
           (SELECT COUNT(*)::int FROM app_profile_link_requests WHERE status='pending') AS vinculos_pendentes,
-          (SELECT COUNT(*)::int FROM app_sessions WHERE expires_at>NOW()) AS sessoes_ativas\`),
+          (SELECT COUNT(*)::int FROM app_sessions WHERE expires_at>NOW()) AS sessoes_ativas`),
         pool.query("SELECT chave,nome,status FROM competencias WHERE status='aberta' ORDER BY id DESC LIMIT 1"),
         pool.query("SELECT COUNT(*)::int AS total FROM app_users WHERE role='admin' AND status='active'")
       ]);
@@ -326,7 +326,7 @@ function registerAuthRoutes(app, pool) {
 
   app.get("/admin/users", requireAdmin, async (_req, res) => {
     try {
-      const result = await pool.query(\`
+      const result = await pool.query(`
         SELECT u.id,u.nome,u.email,u.status,u.role,u.criado_em,
           l.id AS link_id,l.profile_type,l.profile_id,l.status AS link_status
         FROM app_users u
@@ -335,7 +335,7 @@ function registerAuthRoutes(app, pool) {
           WHERE user_id=u.id ORDER BY solicitado_em DESC,id DESC LIMIT 1
         ) l ON TRUE
         ORDER BY u.criado_em DESC,u.id DESC LIMIT 500
-      \`);
+      `);
       res.json({ success: true, usuarios: result.rows });
     } catch (err) {
       console.error("Erro ao listar usuários administrativos:", err.message);
@@ -345,7 +345,7 @@ function registerAuthRoutes(app, pool) {
 
   app.get("/admin/links", requireAdmin, async (_req, res) => {
     try {
-      const result = await pool.query(\`
+      const result = await pool.query(`
         SELECT l.id,l.user_id,l.profile_type,l.profile_id,l.status,l.solicitado_em,
           u.nome AS usuario_nome,u.email,
           CASE WHEN l.profile_type='jogador' THEN j.nome ELSE g.nome END AS perfil_nome
@@ -355,7 +355,7 @@ function registerAuthRoutes(app, pool) {
         LEFT JOIN goleiros g ON l.profile_type='goleiro' AND g.id=l.profile_id
         WHERE l.status='pending'
         ORDER BY l.solicitado_em ASC
-      \`);
+      `);
       res.json({ success: true, vinculos: result.rows });
     } catch (err) {
       console.error("Erro ao listar vínculos pendentes:", err.message);
@@ -423,12 +423,12 @@ function registerAuthRoutes(app, pool) {
 
   app.get("/admin/audit", requireAdmin, async (_req, res) => {
     try {
-      const result = await pool.query(\`
+      const result = await pool.query(`
         SELECT a.id,a.action,a.target_type,a.target_id,a.details,a.created_at,
           u.nome AS administrador_nome,u.email AS administrador_email
         FROM app_admin_audit a LEFT JOIN app_users u ON u.id=a.actor_user_id
         ORDER BY a.created_at DESC,a.id DESC LIMIT 200
-      \`);
+      `);
       res.json({ success: true, registros: result.rows });
     } catch (err) {
       console.error("Erro ao carregar auditoria:", err.message);
