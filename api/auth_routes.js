@@ -39,9 +39,23 @@ async function ensureAuthTables(pool) {
       nome VARCHAR(120) NOT NULL,
       password_hash TEXT NOT NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active','blocked')),
-      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      role VARCHAR(20) NOT NULL DEFAULT 'user'
     )
   `);
+  await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user'`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_admin_audit (
+      id BIGSERIAL PRIMARY KEY,
+      actor_user_id BIGINT REFERENCES app_users(id) ON DELETE SET NULL,
+      action VARCHAR(80) NOT NULL,
+      target_type VARCHAR(40),
+      target_id VARCHAR(80),
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_app_admin_audit_created ON app_admin_audit(created_at DESC)`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_sessions (
       id BIGSERIAL PRIMARY KEY,
@@ -84,7 +98,7 @@ function registerAuthRoutes(app, pool) {
       const match = header.match(/^Bearer\s+([A-Za-z0-9_-]{40,})$/i);
       if (!match) return res.status(401).json({ error: "Autenticação necessária." });
       const result = await pool.query(`
-        SELECT u.id,u.email,u.nome,u.status,s.id AS session_id
+        SELECT u.id,u.email,u.nome,u.status,u.role,s.id AS session_id
         FROM app_sessions s JOIN app_users u ON u.id=s.user_id
         WHERE s.token_hash=$1 AND s.expires_at>NOW()
       `, [hashToken(match[1])]);
@@ -178,7 +192,7 @@ function registerAuthRoutes(app, pool) {
       "SELECT id,profile_type,profile_id,status,solicitado_em,analisado_em FROM app_profile_link_requests WHERE user_id=$1 ORDER BY solicitado_em DESC",
       [req.authUser.id]
     );
-    res.json({ user: { id: req.authUser.id, email: req.authUser.email, nome: req.authUser.nome }, vinculos: links.rows });
+    res.json({ user: { id: req.authUser.id, email: req.authUser.email, nome: req.authUser.nome, role: req.authUser.role || 'user' }, vinculos: links.rows });
   });
 
   app.patch("/auth/profile", authenticate, async (req, res) => {
@@ -226,6 +240,170 @@ function registerAuthRoutes(app, pool) {
     } catch (err) {
       console.error("Erro ao atualizar conta FutPontos:", err.message);
       res.status(500).json({ error: "Não foi possível atualizar a conta." });
+    }
+  });
+
+  async function requireAdmin(req, res, next) {
+    try {
+      await ready;
+      const header = String(req.headers.authorization || "");
+      const match = header.match(/^Bearer\s+([A-Za-z0-9_-]{40,})$/i);
+      if (!match) return res.status(401).json({ error: "Autenticação necessária." });
+      const found = await pool.query(
+        "SELECT u.id,u.email,u.nome,u.status,u.role,s.id AS session_id FROM app_sessions s JOIN app_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>NOW()",
+        [hashToken(match[1])]
+      );
+      if (!found.rows.length || found.rows[0].status !== "active") {
+        return res.status(401).json({ error: "Sessão inválida ou expirada." });
+      }
+      if (found.rows[0].role !== "admin") return res.status(403).json({ error: "Esta conta não possui permissão de administrador." });
+      req.authUser = found.rows[0];
+      req.authTokenHash = hashToken(match[1]);
+      next();
+    } catch (err) {
+      console.error("Falha ao validar administrador FutPontos:", err.message);
+      res.status(503).json({ error: "Não foi possível validar a permissão administrativa." });
+    }
+  }
+
+  async function auditAdmin(actorId, action, targetType, targetId, details = {}) {
+    await pool.query(
+      "INSERT INTO app_admin_audit(actor_user_id,action,target_type,target_id,details) VALUES($1,$2,$3,$4,$5::jsonb)",
+      [actorId, action, targetType, String(targetId ?? ""), JSON.stringify(details)]
+    );
+  }
+
+  app.get("/admin/overview", requireAdmin, async (req, res) => {
+    try {
+      const [counts, current, admins] = await Promise.all([
+        pool.query(\`SELECT
+          (SELECT COUNT(*)::int FROM app_users) AS usuarios,
+          (SELECT COUNT(*)::int FROM app_users WHERE status='active') AS usuarios_ativos,
+          (SELECT COUNT(*)::int FROM jogadores) AS jogadores,
+          (SELECT COUNT(*)::int FROM goleiros) AS goleiros,
+          (SELECT COUNT(*)::int FROM app_profile_link_requests WHERE status='pending') AS vinculos_pendentes,
+          (SELECT COUNT(*)::int FROM app_sessions WHERE expires_at>NOW()) AS sessoes_ativas\`),
+        pool.query("SELECT chave,nome,status FROM competencias WHERE status='aberta' ORDER BY id DESC LIMIT 1"),
+        pool.query("SELECT COUNT(*)::int AS total FROM app_users WHERE role='admin' AND status='active'")
+      ]);
+      res.json({ success: true, resumo: counts.rows[0], competencia: current.rows[0] || null,
+        administradores_ativos: admins.rows[0].total,
+        administrador_atual: { id: req.authUser.id, nome: req.authUser.nome, email: req.authUser.email } });
+    } catch (err) {
+      console.error("Erro no resumo administrativo:", err.message);
+      res.status(500).json({ error: "Não foi possível carregar o resumo administrativo." });
+    }
+  });
+
+  app.get("/admin/users", requireAdmin, async (_req, res) => {
+    try {
+      const result = await pool.query(\`
+        SELECT u.id,u.nome,u.email,u.status,u.role,u.criado_em,
+          l.id AS link_id,l.profile_type,l.profile_id,l.status AS link_status
+        FROM app_users u
+        LEFT JOIN LATERAL (
+          SELECT id,profile_type,profile_id,status FROM app_profile_link_requests
+          WHERE user_id=u.id ORDER BY solicitado_em DESC,id DESC LIMIT 1
+        ) l ON TRUE
+        ORDER BY u.criado_em DESC,u.id DESC LIMIT 500
+      \`);
+      res.json({ success: true, usuarios: result.rows });
+    } catch (err) {
+      console.error("Erro ao listar usuários administrativos:", err.message);
+      res.status(500).json({ error: "Não foi possível listar os usuários." });
+    }
+  });
+
+  app.get("/admin/links", requireAdmin, async (_req, res) => {
+    try {
+      const result = await pool.query(\`
+        SELECT l.id,l.user_id,l.profile_type,l.profile_id,l.status,l.solicitado_em,
+          u.nome AS usuario_nome,u.email,
+          CASE WHEN l.profile_type='jogador' THEN j.nome ELSE g.nome END AS perfil_nome
+        FROM app_profile_link_requests l
+        JOIN app_users u ON u.id=l.user_id
+        LEFT JOIN jogadores j ON l.profile_type='jogador' AND j.id=l.profile_id
+        LEFT JOIN goleiros g ON l.profile_type='goleiro' AND g.id=l.profile_id
+        WHERE l.status='pending'
+        ORDER BY l.solicitado_em ASC
+      \`);
+      res.json({ success: true, vinculos: result.rows });
+    } catch (err) {
+      console.error("Erro ao listar vínculos pendentes:", err.message);
+      res.status(500).json({ error: "Não foi possível listar os vínculos pendentes." });
+    }
+  });
+
+  app.patch("/admin/links/:id", requireAdmin, async (req, res) => {
+    const status = String(req.body?.status || "");
+    if (!["approved", "rejected"].includes(status)) return res.status(400).json({ error: "Decisão inválida." });
+    try {
+      const result = await pool.query(
+        "UPDATE app_profile_link_requests SET status=$1,analisado_em=NOW() WHERE id=$2 AND status='pending' RETURNING id,user_id,profile_type,profile_id,status",
+        [status, req.params.id]
+      );
+      if (!result.rows.length) return res.status(404).json({ error: "Solicitação pendente não encontrada." });
+      await auditAdmin(req.authUser.id, "profile_link." + status, "profile_link", result.rows[0].id,
+        { user_id: result.rows[0].user_id, profile_type: result.rows[0].profile_type, profile_id: result.rows[0].profile_id });
+      res.json({ success: true, vinculo: result.rows[0] });
+    } catch (err) {
+      if (err.code === "23505") return res.status(409).json({ error: "Este perfil já possui outro vínculo ativo ou pendente." });
+      console.error("Erro ao decidir vínculo:", err.message);
+      res.status(500).json({ error: "Não foi possível atualizar o vínculo." });
+    }
+  });
+
+  app.patch("/admin/users/:id/role", requireAdmin, async (req, res) => {
+    const role = String(req.body?.role || "");
+    if (!["admin", "user"].includes(role)) return res.status(400).json({ error: "Papel inválido." });
+    if (String(req.params.id) === String(req.authUser.id)) return res.status(400).json({ error: "Não é permitido alterar o próprio papel." });
+    try {
+      if (role === "user") {
+        const admins = await pool.query("SELECT COUNT(*)::int AS total FROM app_users WHERE role='admin' AND status='active' AND id<>$1", [req.params.id]);
+        const target = await pool.query("SELECT role FROM app_users WHERE id=$1", [req.params.id]);
+        if (!target.rows.length) return res.status(404).json({ error: "Usuário não encontrado." });
+        if (target.rows[0].role === "admin" && admins.rows[0].total === 0) {
+          return res.status(409).json({ error: "Não é possível remover o último administrador ativo." });
+        }
+      }
+      const result = await pool.query("UPDATE app_users SET role=$1 WHERE id=$2 RETURNING id,nome,email,status,role", [role, req.params.id]);
+      if (!result.rows.length) return res.status(404).json({ error: "Usuário não encontrado." });
+      await auditAdmin(req.authUser.id, "user.role_changed", "user", req.params.id, { role });
+      res.json({ success: true, usuario: result.rows[0] });
+    } catch (err) {
+      console.error("Erro ao alterar papel:", err.message);
+      res.status(500).json({ error: "Não foi possível alterar o papel do usuário." });
+    }
+  });
+
+  app.patch("/admin/users/:id/status", requireAdmin, async (req, res) => {
+    const status = String(req.body?.status || "");
+    if (!["active", "blocked"].includes(status)) return res.status(400).json({ error: "Situação inválida." });
+    if (String(req.params.id) === String(req.authUser.id)) return res.status(400).json({ error: "Não é permitido bloquear a própria conta." });
+    try {
+      const result = await pool.query("UPDATE app_users SET status=$1 WHERE id=$2 RETURNING id,nome,email,status,role", [status, req.params.id]);
+      if (!result.rows.length) return res.status(404).json({ error: "Usuário não encontrado." });
+      if (status === "blocked") await pool.query("DELETE FROM app_sessions WHERE user_id=$1", [req.params.id]);
+      await auditAdmin(req.authUser.id, "user.status_changed", "user", req.params.id, { status });
+      res.json({ success: true, usuario: result.rows[0] });
+    } catch (err) {
+      console.error("Erro ao alterar situação da conta:", err.message);
+      res.status(500).json({ error: "Não foi possível alterar a situação da conta." });
+    }
+  });
+
+  app.get("/admin/audit", requireAdmin, async (_req, res) => {
+    try {
+      const result = await pool.query(\`
+        SELECT a.id,a.action,a.target_type,a.target_id,a.details,a.created_at,
+          u.nome AS administrador_nome,u.email AS administrador_email
+        FROM app_admin_audit a LEFT JOIN app_users u ON u.id=a.actor_user_id
+        ORDER BY a.created_at DESC,a.id DESC LIMIT 200
+      \`);
+      res.json({ success: true, registros: result.rows });
+    } catch (err) {
+      console.error("Erro ao carregar auditoria:", err.message);
+      res.status(500).json({ error: "Não foi possível carregar o registro administrativo." });
     }
   });
 
