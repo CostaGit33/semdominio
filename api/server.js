@@ -34,7 +34,7 @@ const requireAdmin = createRequireAdmin(pool, authReady);
 // de chats autorizados. Ambos são configurados somente como secrets/env no servidor.
 function isTelegramPhotoServiceAuthorized(req) {
   const expected = String(process.env.TELEGRAM_PHOTO_UPLOAD_TOKEN || "");
-  const supplied = String(req.headers.authorization || "").replace(/^Bearer\\s+/i, "");
+  const supplied = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   const chatId = String(req.headers["x-telegram-chat-id"] || "").trim();
   const allowed = String(process.env.TELEGRAM_PHOTO_ALLOWED_CHAT_IDS || "")
     .split(",").map((value) => value.trim()).filter(Boolean);
