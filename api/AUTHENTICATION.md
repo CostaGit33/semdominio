@@ -15,6 +15,12 @@ A autenticação é destinada ao aplicativo Flutter. O PWA e o painel administra
 - `GET /auth/me`
   - Requer `Authorization: Bearer <token>`.
   - Retorna a conta e os pedidos de vínculo.
+- `PATCH /auth/profile`
+  - Requer `Authorization: Bearer <token>`.
+  - Body: `{ "nome": "Novo nome" }` para atualizar o nome de exibição.
+  - Para alterar a senha, enviar também `senha_atual` e `nova_senha` (10 a 128 caracteres).
+  - A senha atual é validada com scrypt. Ao alterar a senha, as outras sessões da conta são revogadas; a sessão atual permanece ativa.
+  - O e-mail permanece somente leitura nesta versão.
 - `POST /auth/logout`
   - Requer o mesmo Bearer token e revoga a sessão atual.
 
