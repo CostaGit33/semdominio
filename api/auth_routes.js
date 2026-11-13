@@ -181,6 +181,54 @@ function registerAuthRoutes(app, pool) {
     res.json({ user: { id: req.authUser.id, email: req.authUser.email, nome: req.authUser.nome }, vinculos: links.rows });
   });
 
+  app.patch("/auth/profile", authenticate, async (req, res) => {
+    try {
+      await ready;
+      const nome = req.body?.nome === undefined
+        ? String(req.authUser.nome || "")
+        : String(req.body.nome || "").trim();
+      if (nome.length < 2 || nome.length > 120) {
+        return res.status(400).json({ error: "O nome deve ter entre 2 e 120 caracteres." });
+      }
+
+      const wantsPassword = req.body?.senha_atual !== undefined || req.body?.nova_senha !== undefined;
+      let passwordHash = null;
+      if (wantsPassword) {
+        const currentPassword = String(req.body?.senha_atual || "");
+        const newPassword = String(req.body?.nova_senha || "");
+        if (!currentPassword || newPassword.length < 10 || newPassword.length > 128) {
+          return res.status(400).json({ error: "Informe a senha atual e uma nova senha entre 10 e 128 caracteres." });
+        }
+        const current = await pool.query("SELECT password_hash FROM app_users WHERE id=$1", [req.authUser.id]);
+        if (!current.rows.length || !(await verifyPassword(currentPassword, current.rows[0].password_hash))) {
+          return res.status(401).json({ error: "A senha atual está incorreta." });
+        }
+        passwordHash = await hashPassword(newPassword);
+      }
+
+      const updated = passwordHash
+        ? await pool.query(
+            "UPDATE app_users SET nome=$1,password_hash=$2 WHERE id=$3 RETURNING id,email,nome,status,criado_em",
+            [nome, passwordHash, req.authUser.id]
+          )
+        : await pool.query(
+            "UPDATE app_users SET nome=$1 WHERE id=$2 RETURNING id,email,nome,status,criado_em",
+            [nome, req.authUser.id]
+          );
+
+      if (passwordHash) {
+        await pool.query(
+          "DELETE FROM app_sessions WHERE user_id=$1 AND token_hash<>$2",
+          [req.authUser.id, req.authTokenHash]
+        );
+      }
+      res.json({ success: true, user: updated.rows[0] });
+    } catch (err) {
+      console.error("Erro ao atualizar conta FutPontos:", err.message);
+      res.status(500).json({ error: "Não foi possível atualizar a conta." });
+    }
+  });
+
   app.post("/auth/logout", authenticate, async (req, res) => {
     await pool.query("DELETE FROM app_sessions WHERE token_hash=$1", [req.authTokenHash]);
     res.json({ success: true });
