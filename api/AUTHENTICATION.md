@@ -32,3 +32,11 @@ O status inicial é sempre `pending`. Não existe rota pública para aprovar ví
 - Verificar a migração automática das três tabelas no PostgreSQL.
 - Antes de uso amplo, implementar verificação de e-mail, recuperação de senha, rate limit persistente para login/cadastro e gestão administrativa dos vínculos.
 - As rotas legadas de escrita continuam com o comportamento atual; esta implementação não as protege globalmente para evitar quebra de integrações/PWA. Não interpretar a tela de login como autorização completa da API.
+
+## Alteração de foto de perfil
+
+- `POST /jogadores/:id/foto` exige `Authorization: Bearer <token>` e campo multipart `foto`.
+- `POST /goleiros/:id/foto` aplica a mesma regra para goleiros.
+- A API só aceita a alteração quando a conta autenticada possui vínculo com o perfil correspondente em estado `approved`.
+- Vínculos `pending` ou `rejected` não autorizam upload. O backend valida a sessão e o vínculo diretamente no PostgreSQL antes de processar o arquivo.
+- Limite de arquivo: 5 MB. Formatos permitidos: JPEG, PNG, WEBP e GIF.
