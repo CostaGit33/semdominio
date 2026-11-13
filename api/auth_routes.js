@@ -88,6 +88,35 @@ async function ensureAuthTables(pool) {
   `);
 }
 
+function createRequireAdmin(pool) {
+  const ready = ensureAuthTables(pool);
+  return async function requireAdmin(req, res, next) {
+    try {
+      await ready;
+      const header = String(req.headers.authorization || "");
+      const match = header.match(/^Bearer\s+([A-Za-z0-9_-]{40,})$/i);
+      if (!match) return res.status(401).json({ error: "Autenticação necessária." });
+      const tokenHash = hashToken(match[1]);
+      const result = await pool.query(
+        "SELECT u.id,u.email,u.nome,u.status,u.role FROM app_sessions s JOIN app_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>NOW()",
+        [tokenHash]
+      );
+      if (!result.rows.length || result.rows[0].status !== "active") {
+        return res.status(401).json({ error: "Sessão inválida ou expirada." });
+      }
+      if (result.rows[0].role !== "admin") {
+        return res.status(403).json({ error: "Esta conta não possui permissão de administrador." });
+      }
+      req.authUser = result.rows[0];
+      req.authTokenHash = tokenHash;
+      next();
+    } catch (err) {
+      console.error("Falha ao validar permissão administrativa:", err.message);
+      res.status(503).json({ error: "Não foi possível validar a permissão administrativa." });
+    }
+  };
+}
+
 function registerAuthRoutes(app, pool) {
   const ready = ensureAuthTables(pool);
 
@@ -415,4 +444,4 @@ function registerAuthRoutes(app, pool) {
   return ready;
 }
 
-module.exports = { registerAuthRoutes };
+module.exports = { registerAuthRoutes, createRequireAdmin };
