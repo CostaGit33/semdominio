@@ -48,7 +48,12 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ status: "ok", storage: "private-r2" });
+      const configured = Boolean(env.IMAGES && env.R2_INTERNAL_TOKEN && env.R2_SIGNING_SECRET);
+      return json({
+        status: configured ? "ok" : "degraded",
+        storage: env.IMAGES ? "private-r2" : "not_bound",
+        credentials: env.R2_INTERNAL_TOKEN && env.R2_SIGNING_SECRET ? "configured" : "missing"
+      }, configured ? 200 : 503);
     }
 
     if (url.pathname === "/internal/objects") {
