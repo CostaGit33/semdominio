@@ -28,7 +28,7 @@ const pool = new Pool({
 
 
 const authReady = registerAuthRoutes(app, pool);
-const requireAdmin = createRequireAdmin(pool);
+const requireAdmin = createRequireAdmin(pool, authReady);
 
 // Upload de foto exige sessão válida e vínculo esportivo aprovado.
 // A autorização é validada no servidor; o ID enviado pelo app nunca é suficiente.
