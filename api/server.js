@@ -26,7 +26,50 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL
 });
 
+
 const authReady = registerAuthRoutes(app, pool);
+
+// Upload de foto exige sessão válida e vínculo esportivo aprovado.
+// A autorização é validada no servidor; o ID enviado pelo app nunca é suficiente.
+function requireApprovedProfilePhoto(profileType) {
+  return async (req, res, next) => {
+    try {
+      await authReady;
+      const header = String(req.headers.authorization || "");
+      const match = header.match(/^Bearer\\s+([A-Za-z0-9_-]{40,})$/i);
+      if (!match) return res.status(401).json({ success: false, error: "Faça login para alterar a foto." });
+      const tokenHash = crypto.createHash("sha256").update(match[1]).digest("hex");
+      const profileId = Number(req.params.id);
+      if (!Number.isSafeInteger(profileId) || profileId <= 0) {
+        return res.status(400).json({ success: false, error: "ID do perfil inválido." });
+      }
+      const access = await pool.query(`
+        SELECT u.id
+        FROM app_sessions s
+        JOIN app_users u ON u.id = s.user_id
+        JOIN app_profile_link_requests l ON l.user_id = u.id
+        WHERE s.token_hash = $1
+          AND s.expires_at > NOW()
+          AND u.status = 'active'
+          AND l.profile_type = $2
+          AND l.profile_id = $3
+          AND l.status = 'approved'
+        LIMIT 1
+      `, [tokenHash, profileType, profileId]);
+      if (!access.rows.length) {
+        return res.status(403).json({
+          success: false,
+          error: "Somente a conta vinculada e aprovada para este perfil pode alterar sua foto."
+        });
+      }
+      req.authUserId = access.rows[0].id;
+      next();
+    } catch (err) {
+      console.error("Falha ao autorizar alteração de foto:", err.message);
+      res.status(503).json({ success: false, error: "Não foi possível validar a autorização." });
+    }
+  };
+}
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_PARTIDA = "atual";
@@ -458,7 +501,7 @@ app.put("/jogadores/:id", async (req, res) => {
   } catch (err) { console.error("Erro ao atualizar jogador:", err); res.status(500).json({ error: "Erro ao atualizar jogador" }); }
 });
 
-app.post("/jogadores/:id/foto", uploadPlayerPhoto.single("foto"), async (req, res) => {
+app.post("/jogadores/:id/foto", requireApprovedProfilePhoto("jogador"), uploadPlayerPhoto.single("foto"), async (req, res) => {
   const jogadorId = Number(req.params.id);
   if (!Number.isInteger(jogadorId) || jogadorId <= 0) {
     return res.status(400).json({ success: false, error: "ID do jogador inválido" });
@@ -727,7 +770,7 @@ app.put("/goleiros/:id", async (req,res)=>{
   }catch(err){await client.query("ROLLBACK").catch(()=>{});console.error("Erro ao atualizar goleiro:",err);res.status(500).json({error:"Erro ao atualizar goleiro"});}
   finally{client.release();}
 });
-app.post("/goleiros/:id/foto", uploadGoalkeeperPhoto.single("foto"), async (req, res) => {
+app.post("/goleiros/:id/foto", requireApprovedProfilePhoto("goleiro"), uploadGoalkeeperPhoto.single("foto"), async (req, res) => {
   const goleiroId = Number(req.params.id);
   if (!Number.isInteger(goleiroId) || goleiroId <= 0) {
     return res.status(400).json({ success: false, error: "ID do goleiro inválido" });
