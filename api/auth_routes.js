@@ -88,8 +88,8 @@ async function ensureAuthTables(pool) {
   `);
 }
 
-function createRequireAdmin(pool) {
-  const ready = ensureAuthTables(pool);
+function createRequireAdmin(pool, authReady) {
+  const ready = authReady;
   return async function requireAdmin(req, res, next) {
     try {
       await ready;
