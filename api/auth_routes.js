@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const { promisify } = require("util");
 
 const scrypt = promisify(crypto.scrypt);
+const { registerPasswordResetRoutes } = require("./password_reset");
 const SESSION_DAYS = 30;
 
 function normalizeEmail(value) {
@@ -65,6 +66,19 @@ async function ensureAuthTables(pool) {
       criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_password_resets (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      email VARCHAR(254) NOT NULL,
+      code_hash CHAR(64) NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      expires_at TIMESTAMPTZ NOT NULL,
+      solicitado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      consumed_at TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_app_password_resets_email ON app_password_resets(email, solicitado_em DESC)`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_profile_link_requests (
       id BIGSERIAL PRIMARY KEY,
@@ -142,6 +156,8 @@ function registerAuthRoutes(app, pool) {
       res.status(503).json({ error: "Serviço de autenticação indisponível." });
     }
   }
+
+  registerPasswordResetRoutes(app, pool, ready, hashPassword);
 
   app.post("/auth/register", async (req, res) => {
     try {
