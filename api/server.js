@@ -45,12 +45,17 @@ const allowedPhotoTypes = new Map([
   ["image/webp", ".webp"], ["image/gif", ".gif"]
 ]);
 
+function photoExtensionFromMime(value) {
+  const mime = String(value || "").split(";", 1)[0].trim().toLowerCase();
+  return allowedPhotoTypes.get(mime) || null;
+}
+
 const photoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PHOTO_SIZE },
   fileFilter: (_req, file, cb) => {
-    const mime = String(file.mimetype || "").split(";", 1)[0].trim().toLowerCase();
-    if (!allowedPhotoTypes.has(mime)) {
+    const extension = photoExtensionFromMime(file.mimetype);
+    if (!extension) {
       return cb(new Error("Formato de imagem não permitido. Use JPG, PNG, WEBP ou GIF."));
     }
     cb(null, true);
@@ -462,7 +467,8 @@ app.post("/jogadores/:id/foto", uploadPlayerPhoto.single("foto"), async (req, re
   try {
     const jogador = await pool.query("SELECT id, foto FROM jogadores WHERE id=$1", [jogadorId]);
     if (!jogador.rows.length) return res.status(404).json({ success: false, error: "Jogador não encontrado" });
-    const extension = allowedPhotoTypes.get(req.file.mimetype);
+    const extension = photoExtensionFromMime(req.file.mimetype);
+    if (!extension) return res.status(415).json({ success: false, error: "Formato de imagem não permitido." });
     const key = `jogadores/${jogadorId}${extension}`;
     await sendPhotoToR2(key, req.file);
     const reference = `r2://${key}`;
@@ -731,7 +737,8 @@ app.post("/goleiros/:id/foto", uploadGoalkeeperPhoto.single("foto"), async (req,
     await goalkeeperReady;
     const goleiro = await pool.query("SELECT id,nome,foto FROM goleiros WHERE id=$1", [goleiroId]);
     if (!goleiro.rows.length) return res.status(404).json({ success: false, error: "Goleiro não encontrado" });
-    const extension = allowedPhotoTypes.get(req.file.mimetype);
+    const extension = photoExtensionFromMime(req.file.mimetype);
+    if (!extension) return res.status(415).json({ success: false, error: "Formato de imagem não permitido." });
     const key = `goleiros/${goleiroId}${extension}`;
     await sendPhotoToR2(key, req.file);
     const reference = `r2://${key}`;
