@@ -58,6 +58,8 @@ function registerPasswordResetRoutes(app, pool, ready, hashPassword) {
         return res.status(400).json({ error: "Informe um e-mail válido." });
       }
 
+      await pool.query("DELETE FROM app_password_resets WHERE expires_at < NOW() - INTERVAL '7 days' OR consumed_at < NOW() - INTERVAL '7 days'");
+
       const userResult = await pool.query(
         "SELECT id,email FROM app_users WHERE email=$1 AND status='active' LIMIT 1",
         [email]
@@ -167,7 +169,7 @@ function registerPasswordResetRoutes(app, pool, ready, hashPassword) {
       );
       await client.query("DELETE FROM app_sessions WHERE user_id=$1", [reset.user_id]);
       await client.query(
-        "INSERT INTO app_admin_audit(actor_user_id,action,target_type,target_id,details) VALUES($1,'password.reset.completed','user',$1::text,$2::jsonb)",
+        "INSERT INTO app_auth_audit(user_id,event,details) VALUES($1,'password.reset.completed',$2::jsonb)",
         [reset.user_id, JSON.stringify({ source: "email_code" })]
       );
       await client.query("COMMIT");
