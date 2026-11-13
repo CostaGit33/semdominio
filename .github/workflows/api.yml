@@ -45,6 +45,7 @@ jobs:
         run: |
           node --check server.js
           node --check auth_routes.js
+          node --check password_reset.js
           node --input-type=module --check < ../r2-worker/src/index.js
 
       - name: Verify package metadata
