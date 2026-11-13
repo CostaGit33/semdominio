@@ -88,21 +88,28 @@ const allowedPhotoTypes = new Map([
   ["image/webp", ".webp"], ["image/gif", ".gif"]
 ]);
 
-function photoExtensionFromMime(value) {
-  const mime = String(value || "").split(";", 1)[0].trim().toLowerCase();
-  return allowedPhotoTypes.get(mime) || null;
+function photoTypeFromBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+
+  // Detecta o formato pelos bytes reais, não pelo MIME ou nome enviados pelo cliente.
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { extension: ".jpg", mime: "image/jpeg" };
+  }
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))) {
+    return { extension: ".png", mime: "image/png" };
+  }
+  if (buffer.toString("ascii", 0, 6) === "GIF87a" || buffer.toString("ascii", 0, 6) === "GIF89a") {
+    return { extension: ".gif", mime: "image/gif" };
+  }
+  if (buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") {
+    return { extension: ".webp", mime: "image/webp" };
+  }
+  return null;
 }
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PHOTO_SIZE },
-  fileFilter: (_req, file, cb) => {
-    const extension = photoExtensionFromMime(file.mimetype);
-    if (!extension) {
-      return cb(new Error("Formato de imagem não permitido. Use JPG, PNG, WEBP ou GIF."));
-    }
-    cb(null, true);
-  }
+  limits: { fileSize: MAX_PHOTO_SIZE }
 });
 const uploadPlayerPhoto = photoUpload;
 const uploadGoalkeeperPhoto = photoUpload;
@@ -146,7 +153,7 @@ function signPhotoFields(value) {
   return output;
 }
 
-async function sendPhotoToR2(key, file) {
+async function sendPhotoToR2(key, file, detectedMime) {
   if (!r2IsConfigured()) {
     const error = new Error("Armazenamento privado de imagens não configurado na API.");
     error.status = 503;
@@ -156,7 +163,7 @@ async function sendPhotoToR2(key, file) {
     method: "PUT",
     headers: {
       "Authorization": `Bearer ${R2_INTERNAL_TOKEN}`,
-      "Content-Type": file.mimetype,
+      "Content-Type": detectedMime,
       "Cache-Control": "private, max-age=0"
     },
     body: file.buffer
@@ -510,10 +517,11 @@ app.post("/jogadores/:id/foto", requireApprovedProfilePhoto("jogador"), uploadPl
   try {
     const jogador = await pool.query("SELECT id, foto FROM jogadores WHERE id=$1", [jogadorId]);
     if (!jogador.rows.length) return res.status(404).json({ success: false, error: "Jogador não encontrado" });
-    const extension = photoExtensionFromMime(req.file.mimetype);
-    if (!extension) return res.status(415).json({ success: false, error: "Formato de imagem não permitido." });
+    const detectedType = photoTypeFromBuffer(req.file.buffer);
+    if (!detectedType) return res.status(415).json({ success: false, error: "Arquivo não é uma imagem JPG, PNG, WEBP ou GIF válida." });
+    const extension = detectedType.extension;
     const key = `jogadores/${jogadorId}${extension}`;
-    await sendPhotoToR2(key, req.file);
+    await sendPhotoToR2(key, req.file, detectedType.mime);
     const reference = `r2://${key}`;
     try {
       const updated = await pool.query(
@@ -780,10 +788,11 @@ app.post("/goleiros/:id/foto", requireApprovedProfilePhoto("goleiro"), uploadGoa
     await goalkeeperReady;
     const goleiro = await pool.query("SELECT id,nome,foto FROM goleiros WHERE id=$1", [goleiroId]);
     if (!goleiro.rows.length) return res.status(404).json({ success: false, error: "Goleiro não encontrado" });
-    const extension = photoExtensionFromMime(req.file.mimetype);
-    if (!extension) return res.status(415).json({ success: false, error: "Formato de imagem não permitido." });
+    const detectedType = photoTypeFromBuffer(req.file.buffer);
+    if (!detectedType) return res.status(415).json({ success: false, error: "Arquivo não é uma imagem JPG, PNG, WEBP ou GIF válida." });
+    const extension = detectedType.extension;
     const key = `goleiros/${goleiroId}${extension}`;
-    await sendPhotoToR2(key, req.file);
+    await sendPhotoToR2(key, req.file, detectedType.mime);
     const reference = `r2://${key}`;
     try {
       const updated = await pool.query(
