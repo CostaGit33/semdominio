@@ -42,3 +42,31 @@ A administração usa a mesma conta e o mesmo token de autenticação do FutPont
 - Bloquear uma conta revoga as sessões existentes.
 - Alterações administrativas ficam registradas em `app_admin_audit`.
 - Cadastro público nunca concede papel administrativo.
+
+## Registro inteligente pelo aplicativo
+
+A rota `POST /admin/registro-inteligente` recebe mensagens em linguagem natural do painel Flutter. Ela exige a mesma sessão Bearer e o papel `admin` das demais rotas administrativas.
+
+Configure somente no ambiente do serviço da API:
+
+- `FUTPONTOS_N8N_WEBHOOK_URL`: URL HTTPS do Webhook de produção do n8n.
+- `FUTPONTOS_N8N_WEBHOOK_SECRET`: segredo aleatório compartilhado entre a API e o workflow.
+
+A API envia ao n8n um JSON com `mensagem`, `source`, `operacao_id` e os dados do administrador autenticado. O workflow deve validar o cabeçalho `X-FutPontos-Webhook-Secret` antes de processar a mensagem.
+
+**Contrato obrigatório da resposta do n8n:** responder ao Webhook com JSON no formato abaixo, somente depois de receber a confirmação da chamada `POST /partida/registrar`:
+
+```json
+{
+  "success": true,
+  "message": "Partida registrada com sucesso.",
+  "api_result": {
+    "success": true,
+    "jogadores_atualizados": []
+  }
+}
+```
+
+O campo `api_result` deve conter a resposta real de `/partida/registrar`. Se a API retornar erro, o workflow deve responder com `success: false` e uma mensagem de erro. A rota administrativa não considera uma resposta da IA ou do n8n, isoladamente, como confirmação de registro.
+
+A rota cria o identificador `operacao_id` com prefixo `app_` e registra a confirmação na auditoria administrativa. O limite de processamento síncrono é de 90 segundos.
