@@ -462,6 +462,108 @@ function registerAuthRoutes(app, pool) {
     }
   });
 
+  // Registro inteligente: somente administradores podem acionar o workflow n8n.
+  // O segredo e a URL do webhook existem apenas no ambiente da API, nunca no APK.
+  app.post("/admin/registro-inteligente", requireAdmin, async (req, res) => {
+    const mensagem = String(req.body?.mensagem || "").trim();
+    if (mensagem.length < 3 || mensagem.length > 2000) {
+      return res.status(400).json({ success: false, error: "A mensagem deve ter entre 3 e 2.000 caracteres." });
+    }
+
+    const webhookUrl = String(process.env.FUTPONTOS_N8N_WEBHOOK_URL || "").trim();
+    const webhookSecret = String(process.env.FUTPONTOS_N8N_WEBHOOK_SECRET || "");
+    if (!webhookUrl || !webhookSecret) {
+      return res.status(503).json({
+        success: false,
+        error: "Integração com o n8n não configurada na API. Configure FUTPONTOS_N8N_WEBHOOK_URL e FUTPONTOS_N8N_WEBHOOK_SECRET."
+      });
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(webhookUrl);
+    } catch (_) {
+      return res.status(503).json({ success: false, error: "A URL do webhook n8n está inválida." });
+    }
+    if (parsedUrl.protocol !== "https:") {
+      return res.status(503).json({ success: false, error: "O webhook n8n deve utilizar HTTPS." });
+    }
+
+    const operacaoId = `app_${crypto.randomUUID()}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
+
+    try {
+      const webhookResponse = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-FutPontos-Webhook-Secret": webhookSecret
+        },
+        body: JSON.stringify({
+          mensagem,
+          source: "futpontos-app",
+          operacao_id: operacaoId,
+          administrador: {
+            id: req.authUser.id,
+            nome: req.authUser.nome,
+            email: req.authUser.email
+          }
+        }),
+        signal: controller.signal
+      });
+
+      const responseText = await webhookResponse.text();
+      let workflow;
+      try {
+        workflow = responseText ? JSON.parse(responseText) : {};
+      } catch (_) {
+        return res.status(502).json({ success: false, error: "O n8n retornou uma resposta que não é JSON válido." });
+      }
+
+      if (!webhookResponse.ok) {
+        return res.status(502).json({
+          success: false,
+          error: workflow.error || workflow.message || `O n8n respondeu HTTP ${webhookResponse.status}.`
+        });
+      }
+
+      const apiResult = workflow.api_result && typeof workflow.api_result === "object"
+        ? workflow.api_result
+        : null;
+      const apiConfirmed = apiResult && (
+        apiResult.success === true || apiResult.sucesso === true || apiResult.ok === true
+      );
+      if (workflow.success !== true || !apiConfirmed) {
+        return res.status(502).json({
+          success: false,
+          error: workflow.message || "O workflow não confirmou sucesso real da API. O aplicativo não exibirá o registro como concluído."
+        });
+      }
+
+      await auditAdmin(req.authUser.id, "match.intelligent_registration", "match", operacaoId, {
+        source: "futpontos-app",
+        api_confirmed: true
+      });
+
+      return res.json({
+        success: true,
+        operation_id: operacaoId,
+        message: String(workflow.message || "Registro confirmado pela API."),
+        api_result: apiResult
+      });
+    } catch (err) {
+      if (err.name === "AbortError") {
+        return res.status(504).json({ success: false, error: "O processamento no n8n excedeu 90 segundos. Verifique a execução antes de tentar novamente." });
+      }
+      console.error("Erro no registro inteligente FutPontos:", err.message);
+      return res.status(502).json({ success: false, error: "Não foi possível concluir a comunicação com o n8n." });
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+
   app.post("/auth/logout", authenticate, async (req, res) => {
     await pool.query("DELETE FROM app_sessions WHERE token_hash=$1", [req.authTokenHash]);
     res.json({ success: true });
