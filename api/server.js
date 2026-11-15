@@ -72,7 +72,7 @@ function requireApprovedProfilePhoto(profileType) {
         WHERE s.token_hash = $1
           AND s.expires_at > NOW()
           AND u.status = 'active'
-          AND (u.role = 'admin' OR l.id IS NOT NULL)
+          AND l.id IS NOT NULL
         LIMIT 1
       `, [tokenHash, profileType, profileId]);
       if (!access.rows.length) {
