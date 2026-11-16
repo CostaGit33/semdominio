@@ -7,7 +7,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const multer = require("multer");
 const { Pool } = require("pg");
-const { registerAuthRoutes, createRequireAdmin } = require("./auth_routes");
+const { registerAuthRoutes, createRequireAdmin, createRequireProfileOwner } = require("./auth_routes");
 
 const app = express();
 
@@ -29,6 +29,8 @@ const pool = new Pool({
 
 const authReady = registerAuthRoutes(app, pool);
 const requireAdmin = createRequireAdmin(pool, authReady);
+const requirePlayerProfileOwner = createRequireProfileOwner(pool, authReady, "jogador");
+const requireGoalkeeperProfileOwner = createRequireProfileOwner(pool, authReady, "goleiro");
 
 // Upload automatizado pelo Telegram: token de serviço + allowlist de IDs
 // de chats autorizados. Ambos são configurados somente como secrets/env no servidor.
@@ -45,14 +47,15 @@ function isTelegramPhotoServiceAuthorized(req) {
     crypto.timingSafeEqual(expectedBytes, suppliedBytes);
 }
 
-// Upload de foto é restrito a administradores autenticados.
-// O serviço do Telegram continua permitido somente com token próprio e allowlist de chats.
-function requireAdminOrTelegramPhotoService(req, res, next) {
-  if (isTelegramPhotoServiceAuthorized(req)) {
-    req.authSource = "telegram-photo-service";
-    return next();
-  }
-  return requireAdmin(req, res, next);
+// Upload de foto: administrador, dono do vínculo esportivo aprovado ou serviço Telegram autorizado.
+function requirePhotoOwnerOrTelegramService(ownerMiddleware) {
+  return function (req, res, next) {
+    if (isTelegramPhotoServiceAuthorized(req)) {
+      req.authSource = "telegram-photo-service";
+      return next();
+    }
+    return ownerMiddleware(req, res, next);
+  };
 }
 
 const PORT = process.env.PORT || 3000;
@@ -492,7 +495,7 @@ app.put("/jogadores/:id", requireAdmin, async (req, res) => {
   } catch (err) { console.error("Erro ao atualizar jogador:", err); res.status(500).json({ error: "Erro ao atualizar jogador" }); }
 });
 
-app.post("/jogadores/:id/foto", requireAdminOrTelegramPhotoService, uploadPlayerPhoto.single("foto"), async (req, res) => {
+app.post("/jogadores/:id/foto", requirePhotoOwnerOrTelegramService(requirePlayerProfileOwner), uploadPlayerPhoto.single("foto"), async (req, res) => {
   const jogadorId = Number(req.params.id);
   if (!Number.isInteger(jogadorId) || jogadorId <= 0) {
     return res.status(400).json({ success: false, error: "ID do jogador inválido" });
@@ -762,7 +765,7 @@ app.put("/goleiros/:id", requireAdmin, async (req,res)=>{
   }catch(err){await client.query("ROLLBACK").catch(()=>{});console.error("Erro ao atualizar goleiro:",err);res.status(500).json({error:"Erro ao atualizar goleiro"});}
   finally{client.release();}
 });
-app.post("/goleiros/:id/foto", requireAdminOrTelegramPhotoService, uploadGoalkeeperPhoto.single("foto"), async (req, res) => {
+app.post("/goleiros/:id/foto", requirePhotoOwnerOrTelegramService(requireGoalkeeperProfileOwner), uploadGoalkeeperPhoto.single("foto"), async (req, res) => {
   const goleiroId = Number(req.params.id);
   if (!Number.isInteger(goleiroId) || goleiroId <= 0) {
     return res.status(400).json({ success: false, error: "ID do goleiro inválido" });
