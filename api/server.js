@@ -7,7 +7,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const multer = require("multer");
 const { Pool } = require("pg");
-const { registerAuthRoutes, createRequireAdmin } = require("./auth_routes");
+const { registerAuthRoutes, createRequireAdmin, createRequireProfileOwner } = require("./auth_routes");
 
 const app = express();
 
@@ -29,6 +29,8 @@ const pool = new Pool({
 
 const authReady = registerAuthRoutes(app, pool);
 const requireAdmin = createRequireAdmin(pool, authReady);
+const requirePlayerProfileOwner = createRequireProfileOwner(pool, authReady, "jogador");
+const requireGoalkeeperProfileOwner = createRequireProfileOwner(pool, authReady, "goleiro");
 
 // Upload automatizado pelo Telegram: token de serviço + allowlist de IDs
 // de chats autorizados. Ambos são configurados somente como secrets/env no servidor.
@@ -45,48 +47,14 @@ function isTelegramPhotoServiceAuthorized(req) {
     crypto.timingSafeEqual(expectedBytes, suppliedBytes);
 }
 
-// Upload de foto exige sessão válida e vínculo esportivo aprovado.
-// O bot usa credencial de serviço restrita a chats explicitamente autorizados.
-function requireApprovedProfilePhoto(profileType) {
-  return async (req, res, next) => {
-    try {
-      await authReady;
-      if (isTelegramPhotoServiceAuthorized(req)) {
-        req.authSource = "telegram-photo-service";
-        return next();
-      }
-      const header = String(req.headers.authorization || "");
-      const match = header.match(/^Bearer\s+([A-Za-z0-9_-]{40,})$/i);
-      if (!match) return res.status(401).json({ success: false, error: "Faça login para alterar a foto." });
-      const tokenHash = crypto.createHash("sha256").update(match[1]).digest("hex");
-      const profileId = Number(req.params.id);
-      if (!Number.isSafeInteger(profileId) || profileId <= 0) {
-        return res.status(400).json({ success: false, error: "ID do perfil inválido." });
-      }
-      const access = await pool.query(`
-        SELECT u.id
-        FROM app_sessions s
-        JOIN app_users u ON u.id = s.user_id
-        LEFT JOIN app_profile_link_requests l
-          ON l.user_id = u.id AND l.profile_type = $2 AND l.profile_id = $3 AND l.status = 'approved'
-        WHERE s.token_hash = $1
-          AND s.expires_at > NOW()
-          AND u.status = 'active'
-          AND l.id IS NOT NULL
-        LIMIT 1
-      `, [tokenHash, profileType, profileId]);
-      if (!access.rows.length) {
-        return res.status(403).json({
-          success: false,
-          error: "Somente a conta vinculada e aprovada para este perfil pode alterar sua foto."
-        });
-      }
-      req.authUserId = access.rows[0].id;
-      next();
-    } catch (err) {
-      console.error("Falha ao autorizar alteração de foto:", err.message);
-      res.status(503).json({ success: false, error: "Não foi possível validar a autorização." });
+// Upload de foto: administrador, dono do vínculo esportivo aprovado ou serviço Telegram autorizado.
+function requirePhotoOwnerOrTelegramService(ownerMiddleware) {
+  return function (req, res, next) {
+    if (isTelegramPhotoServiceAuthorized(req)) {
+      req.authSource = "telegram-photo-service";
+      return next();
     }
+    return ownerMiddleware(req, res, next);
   };
 }
 
@@ -518,7 +486,7 @@ app.post("/jogadores", requireAdmin, async (req, res) => {
 app.put("/jogadores/:id", requireAdmin, async (req, res) => {
   const jogador = normalizePlayer(req.body);
   try {
-    const result = await pool.query(`UPDATE jogadores SET nome=$1,foto=$2 WHERE id=$3 RETURNING *`, [jogador.nome, jogador.foto, req.params.id]);
+    const result = await pool.query(`UPDATE jogadores SET nome=$1,foto=COALESCE($2,foto) WHERE id=$3 RETURNING *`, [jogador.nome, jogador.foto, req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: "Jogador não encontrado" });
     await monthlyReady;
     const competencia = await currentCompetencia();
@@ -527,7 +495,7 @@ app.put("/jogadores/:id", requireAdmin, async (req, res) => {
   } catch (err) { console.error("Erro ao atualizar jogador:", err); res.status(500).json({ error: "Erro ao atualizar jogador" }); }
 });
 
-app.post("/jogadores/:id/foto", requireApprovedProfilePhoto("jogador"), uploadPlayerPhoto.single("foto"), async (req, res) => {
+app.post("/jogadores/:id/foto", requirePhotoOwnerOrTelegramService(requirePlayerProfileOwner), uploadPlayerPhoto.single("foto"), async (req, res) => {
   const jogadorId = Number(req.params.id);
   if (!Number.isInteger(jogadorId) || jogadorId <= 0) {
     return res.status(400).json({ success: false, error: "ID do jogador inválido" });
@@ -785,7 +753,7 @@ app.put("/goleiros/:id", requireAdmin, async (req,res)=>{
   try{
     await goalkeeperReady;
     await client.query("BEGIN");
-    const result=await client.query("UPDATE goleiros SET nome=$1,pontos=$2,vitorias=$3,empate=$4,defesa=$5,gols=$6,infracoes=$7,foto=$8 WHERE id=$9 RETURNING *",[goleiro.nome,goleiro.pontos,goleiro.vitorias,goleiro.empate,goleiro.defesa,goleiro.gols,goleiro.infracoes,goleiro.foto,req.params.id]);
+    const result=await client.query("UPDATE goleiros SET nome=$1,pontos=$2,vitorias=$3,empate=$4,defesa=$5,gols=$6,infracoes=$7,foto=COALESCE($8,foto) WHERE id=$9 RETURNING *",[goleiro.nome,goleiro.pontos,goleiro.vitorias,goleiro.empate,goleiro.defesa,goleiro.gols,goleiro.infracoes,goleiro.foto,req.params.id]);
     if(!result.rows.length){await client.query("ROLLBACK");return res.status(404).json({error:"Goleiro não encontrado"});}
     const competencia=await currentCompetencia(client);
     await client.query(`INSERT INTO desempenho_mensal_goleiros (competencia_id,goleiro_id,pontos,vitorias,empates,defesas,gols,infracoes)
@@ -797,7 +765,7 @@ app.put("/goleiros/:id", requireAdmin, async (req,res)=>{
   }catch(err){await client.query("ROLLBACK").catch(()=>{});console.error("Erro ao atualizar goleiro:",err);res.status(500).json({error:"Erro ao atualizar goleiro"});}
   finally{client.release();}
 });
-app.post("/goleiros/:id/foto", requireApprovedProfilePhoto("goleiro"), uploadGoalkeeperPhoto.single("foto"), async (req, res) => {
+app.post("/goleiros/:id/foto", requirePhotoOwnerOrTelegramService(requireGoalkeeperProfileOwner), uploadGoalkeeperPhoto.single("foto"), async (req, res) => {
   const goleiroId = Number(req.params.id);
   if (!Number.isInteger(goleiroId) || goleiroId <= 0) {
     return res.status(400).json({ success: false, error: "ID do goleiro inválido" });

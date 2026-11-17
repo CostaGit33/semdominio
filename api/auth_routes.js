@@ -141,6 +141,45 @@ function createRequireAdmin(pool, authReady) {
   };
 }
 
+
+function createRequireProfileOwner(pool, authReady, profileType) {
+  return async function requireProfileOwner(req, res, next) {
+    try {
+      await authReady;
+      const header = String(req.headers.authorization || "");
+      const match = header.match(/^Bearer\\s+([A-Za-z0-9_-]{40,})$/i);
+      if (!match) return res.status(401).json({ error: "Entre na sua conta para editar este perfil." });
+      const tokenHash = hashToken(match[1]);
+      const found = await pool.query(
+        "SELECT u.id,u.email,u.nome,u.status,u.role FROM app_sessions s JOIN app_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>NOW()",
+        [tokenHash]
+      );
+      if (!found.rows.length || found.rows[0].status !== "active") {
+        return res.status(401).json({ error: "Sessão inválida ou expirada. Entre novamente." });
+      }
+      req.authUser = found.rows[0];
+      req.authTokenHash = tokenHash;
+      if (req.authUser.role === "admin") return next();
+
+      const profileId = Number(req.params.id);
+      if (!Number.isSafeInteger(profileId) || profileId <= 0) {
+        return res.status(400).json({ error: "ID do perfil inválido." });
+      }
+      const link = await pool.query(
+        "SELECT 1 FROM app_profile_link_requests WHERE user_id=$1 AND profile_type=$2 AND profile_id=$3 AND status='approved' LIMIT 1",
+        [req.authUser.id, profileType, profileId]
+      );
+      if (!link.rows.length) {
+        return res.status(403).json({ error: "Você só pode editar o perfil esportivo vinculado e aprovado à sua conta." });
+      }
+      return next();
+    } catch (err) {
+      console.error("Falha ao validar propriedade do perfil:", err.message);
+      return res.status(503).json({ error: "Não foi possível validar a autorização do perfil." });
+    }
+  };
+}
+
 function registerAuthRoutes(app, pool) {
   const ready = ensureAuthTables(pool);
 
@@ -572,4 +611,4 @@ function registerAuthRoutes(app, pool) {
   return ready;
 }
 
-module.exports = { registerAuthRoutes, createRequireAdmin };
+module.exports = { registerAuthRoutes, createRequireAdmin, createRequireProfileOwner };
