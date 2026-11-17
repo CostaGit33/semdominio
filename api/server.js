@@ -79,9 +79,6 @@ function requirePhotoOwnerOrTelegramService(ownerMiddleware) {
 }
 
 const PORT = process.env.PORT || 3000;
-const DEFAULT_PARTIDA = "atual";
-const MAX_TIMES = 5;
-const MAX_JOGADORES_TIME = 7;
 const UPLOAD_ROOT = path.join(__dirname, "public", "uploads");
 const PLAYER_PHOTO_ROOT = path.join(UPLOAD_ROOT, "jogadores");
 const GOALKEEPER_PHOTO_ROOT = path.join(UPLOAD_ROOT, "goleiros");
@@ -210,28 +207,6 @@ function normalizePlayer(data = {}) {
   jogador.pontos = calculatePoints(jogador.vitorias, jogador.empate, jogador.defesa, jogador.gols, jogador.infracoes);
   return jogador;
 }
-
-function partidaId(req) {
-  const valor = String(req.query.partida || req.body?.partida || DEFAULT_PARTIDA).trim();
-  return valor.slice(0, 80) || DEFAULT_PARTIDA;
-}
-
-async function ensureMontagemTable() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS montagem_times (
-      id BIGSERIAL PRIMARY KEY,
-      partida VARCHAR(80) NOT NULL DEFAULT 'atual',
-      jogador_id INTEGER NOT NULL REFERENCES jogadores(id) ON DELETE CASCADE,
-      time_num INTEGER NOT NULL CHECK (time_num BETWEEN 1 AND 5),
-      ordem INTEGER NOT NULL,
-      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (partida, jogador_id),
-      UNIQUE (partida, ordem)
-    )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_montagem_times_partida ON montagem_times (partida, time_num, ordem)`);
-}
-
 
 async function ensureCompetenciaTable() {
   await pool.query(`
@@ -575,43 +550,6 @@ app.get("/desempenho", async (req, res) => {
   } catch (err) { console.error("Erro ao buscar desempenho técnico:", err); res.status(500).json({ error: "Erro ao buscar desempenho técnico" }); }
 });
 
-app.get("/montar-times", async (req, res) => {
-  const partida = partidaId(req);
-  try {
-    const result = await pool.query(`SELECT m.id,m.partida,m.jogador_id,m.time_num,m.ordem,m.criado_em,j.nome,j.pontos,j.vitorias,j.empate,j.gols,j.defesa AS defesa_classificacao,j.infracoes,j.foto,a.defesa AS avaliacao_defesa,a.ataque AS avaliacao_ataque,a.velocidade AS avaliacao_velocidade,a.habilidade AS avaliacao_habilidade,a.passe AS avaliacao_passe FROM montagem_times m JOIN jogadores j ON j.id=m.jogador_id LEFT JOIN avaliacao_jogadores a ON a.jogador_id=j.id WHERE m.partida=$1 ORDER BY m.ordem ASC`, [partida]);
-    res.json({ partida, selecoes: result.rows });
-  } catch (err) { console.error("Erro ao buscar montagem:", err); res.status(500).json({ error: "Erro ao buscar montagem de times" }); }
-});
-
-app.post("/montar-times/selecionar", async (req, res) => {
-  const partida = partidaId(req), jogadorId = Number(req.body.jogador_id ?? req.body.jogadorId), timeNum = Number(req.body.time_num ?? req.body.time);
-  if (!Number.isInteger(jogadorId) || jogadorId<=0) return res.status(400).json({error:"jogador_id inválido"});
-  if (!Number.isInteger(timeNum) || timeNum<1 || timeNum>MAX_TIMES) return res.status(400).json({error:"time inválido"});
-  const client=await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",[partida]);
-    const jogador=await client.query("SELECT id,nome FROM jogadores WHERE id=$1",[jogadorId]);
-    if(!jogador.rows.length){await client.query("ROLLBACK");return res.status(404).json({error:"Jogador não encontrado"});}
-    const existente=await client.query("SELECT id,time_num,ordem FROM montagem_times WHERE partida=$1 AND jogador_id=$2",[partida,jogadorId]);
-    if(existente.rows.length){await client.query("ROLLBACK");return res.status(409).json({error:"Jogador já foi escolhido",selecao:existente.rows[0]});}
-    const quantidade=await client.query("SELECT COUNT(*)::int AS total FROM montagem_times WHERE partida=$1 AND time_num=$2",[partida,timeNum]);
-    if(quantidade.rows[0].total>=MAX_JOGADORES_TIME){await client.query("ROLLBACK");return res.status(409).json({error:"Este time já atingiu 7 jogadores"});}
-    const ordemResult=await client.query("SELECT COALESCE(MAX(ordem),0)+1 AS ordem FROM montagem_times WHERE partida=$1",[partida]);
-    const inserido=await client.query(`INSERT INTO montagem_times(partida,jogador_id,time_num,ordem) VALUES($1,$2,$3,$4) RETURNING id,partida,jogador_id,time_num,ordem,criado_em`,[partida,jogadorId,timeNum,Number(ordemResult.rows[0].ordem)]);
-    await client.query("COMMIT");
-    res.status(201).json({success:true,jogador:jogador.rows[0],selecao:inserido.rows[0]});
-  } catch(err){try{await client.query("ROLLBACK")}catch(_){} console.error("Erro ao selecionar jogador:",err); if(err.code==="23505")return res.status(409).json({error:"Jogador já foi escolhido por outro líder"}); res.status(500).json({error:"Erro ao registrar seleção"});} finally{client.release();}
-});
-
-app.delete("/montar-times/:jogadorId", async (req,res)=>{
-  const partida=partidaId(req), jogadorId=Number(req.params.jogadorId);
-  if(!Number.isInteger(jogadorId)||jogadorId<=0)return res.status(400).json({error:"jogadorId inválido"});
-  try{const result=await pool.query("DELETE FROM montagem_times WHERE partida=$1 AND jogador_id=$2 RETURNING *",[partida,jogadorId]);if(!result.rows.length)return res.status(404).json({error:"Seleção não encontrada"});res.json({success:true,selecao:result.rows[0]});}catch(err){console.error("Erro ao remover seleção:",err);res.status(500).json({error:"Erro ao remover seleção"});}
-});
-
-app.delete("/montar-times", async (req,res)=>{const partida=partidaId(req);try{const result=await pool.query("DELETE FROM montagem_times WHERE partida=$1 RETURNING id",[partida]);res.json({success:true,removidos:result.rowCount});}catch(err){console.error("Erro ao limpar montagem:",err);res.status(500).json({error:"Erro ao limpar montagem"});}});
-
 app.get("/goleiros", async (req,res)=>{
   try {
     await goalkeeperReady;
@@ -925,7 +863,7 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`API FutPontos rodando na porta ${PORT}`);
-  Promise.all([monthlyReady, goalkeeperReady, authReady, ensureMontagemTable(), ensurePartidaOperacoesTable()])
+  Promise.all([monthlyReady, goalkeeperReady, authReady, ensurePartidaOperacoesTable()])
     .then(() => console.log("Banco preparado com sucesso."))
     .catch((err) => console.error("Erro ao preparar banco de dados (API continua online):", err));
 });
