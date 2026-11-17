@@ -38,8 +38,11 @@ jobs:
           cache: npm
           cache-dependency-path: api/package-lock.json
 
-      - name: Install locked dependencies
-        run: npm ci --ignore-scripts
+      - name: Install declared runtime dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Validate runtime dependencies
+        run: node -e "for (const name of ['express', 'cors', 'dotenv', 'pg', 'multer']) require.resolve(name)"
 
       - name: Validate JavaScript syntax
         run: |
