@@ -29,6 +29,26 @@ const pool = new Pool({
 
 const authReady = registerAuthRoutes(app, pool);
 const requireAdmin = createRequireAdmin(pool, authReady);
+
+// O registro de partidas aceita administrador autenticado ou chamada interna do n8n.
+// O segredo já é compartilhado entre a API e o webhook; nunca é enviado ao Flutter.
+function isN8nServiceAuthorized(req) {
+  const expected = String(process.env.FUTPONTOS_N8N_WEBHOOK_SECRET || "");
+  const supplied = String(req.headers["x-futpontos-webhook-secret"] || "");
+  if (!expected || !supplied) return false;
+  const expectedBytes = Buffer.from(expected);
+  const suppliedBytes = Buffer.from(supplied);
+  return expectedBytes.length === suppliedBytes.length &&
+    crypto.timingSafeEqual(expectedBytes, suppliedBytes);
+}
+
+function requireAdminOrN8n(req, res, next) {
+  if (isN8nServiceAuthorized(req)) {
+    req.authSource = "n8n-service";
+    return next();
+  }
+  return requireAdmin(req, res, next);
+}
 const requirePlayerProfileOwner = createRequireProfileOwner(pool, authReady, "jogador");
 const requireGoalkeeperProfileOwner = createRequireProfileOwner(pool, authReady, "goleiro");
 
@@ -827,7 +847,7 @@ function validateRegistroPartida(data){
   return erros;
 }
 
-app.post("/partida/registrar", async (req,res)=>{
+app.post("/partida/registrar", requireAdminOrN8n, async (req,res)=>{
   const {operacao_id,coletivo,individual,goleiros}=req.body;
   const erros=validateRegistroPartida(req.body);
   if(erros.length)return res.status(400).json({error:"Validação falhou",detalhes:erros});
